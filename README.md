@@ -18,7 +18,10 @@ pufferfish - 0.0.0b (06/01/2020)
 
 
 
+
 Usage and Tools:
+================
+
 
 usage: pufferfish [-h] [-v]
 
