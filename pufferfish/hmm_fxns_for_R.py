@@ -118,6 +118,15 @@ def get_transition_probs(nstates=7, special_state_idx=0, leave_special=0.001, le
     rowsvecr = fltvec(rowsvec)
     return matrixr(rowsvecr, nrow=nstates, byrow=True)
 
+def get_transition_probs_from_str(transprobstr):
+    t = np.array([[float(j) for j in e.split(',')] for e in transprobstr.split(';')])
+    nstates = t.shape[0]
+    rowsvec = []
+    for i in range(nstates):
+        rowsvec += list(t[i,])
+    rowsvecr = fltvec(rowsvec)
+    return matrixr(rowsvecr, nrow=nstates, byrow=True)
+
 
 def get_initial_probs(nstates=7, special_state_idx=0, special_state=0.997, other_states=None, inits=None):
     if inits is None:
@@ -178,7 +187,7 @@ def help_get_emission_probs(mu, sigma=None, mu_scale=None):
         sigma is a string with comma-sep stat stdevs
         RETURNS: e_prob matrix and nstates'''
     ## emissions: determine state means
-    e_mu = [float(e) for e in mu.strip().split(',')]
+    e_mu = [float(e) for e in mu.strip().strip('\\').split(',')]
     ## emissions: determine number of states from state means
     nstates = len(e_mu)
     ## emissions: determine state sigmas
@@ -194,38 +203,45 @@ def help_get_emission_probs(mu, sigma=None, mu_scale=None):
     return eprobs, nstates
 
 
-def help_get_transition_probs(leave_special_state, leave_other, special_state_idx, nstates):
+def help_get_transition_probs(leave_special_state, leave_other, special_state_idx, nstates, transprobs):
     '''
         leave_special_state is probability of leaving special state (e.g. CN=1) - can make it same as others.
         leave_other is probability of leaving a non-special state
         special_state_idx is the 0-based idx of where to find special state params
         nstates is number of states in model
     '''
-    if leave_special_state > 1:
-        leave_special_state = 1.0/leave_special_state
-    if leave_other is None:
-        leave_non_to_special = leave_special_state
-        leave_non_to_other = leave_special_state
+    if transprobs is not None:
+        tprobs = get_transition_probs_from_str(transprobs)
     else:
-        leave_other = [float(e) for e in leave_other.split(',')]
-        if len(leave_other) == 1:
-            if leave_other[0] > 1:
-                lp = 1.0/leave_other[0]
-            else:
-                lp = leave_other[0]
-            leave_non_to_special = lp
-            leave_non_to_other = lp
-        elif len(leave_other) > 1:
-            if leave_other[0] > 1:
-                leave_non_to_special = 1.0/leave_other[0]
-            else:
-                leave_non_to_special = leave_other[0]
-            if leave_other[1] > 1:
-                leave_non_to_other = 1.0/leave_other[1]
-            else:
-                leave_non_to_other = leave_other[1]
+        if leave_special_state > 1:
+            leave_special_state = 1.0/leave_special_state
+        if leave_other is None:
+            leave_non_to_special = leave_special_state
+            leave_non_to_other = leave_special_state
+        else:
+            leave_other = [float(e) for e in leave_other.split(',')]
+            if len(leave_other) == 1:
+                if leave_other[0] > 1:
+                    lp = 1.0/leave_other[0]
+                else:
+                    lp = leave_other[0]
+                leave_non_to_special = lp
+                leave_non_to_other = lp
+            elif len(leave_other) > 1:
+                if leave_other[0] > 1:
+                    leave_non_to_special = 1.0/leave_other[0]
+                else:
+                    leave_non_to_special = leave_other[0]
+                if leave_other[1] > 1:
+                    leave_non_to_other = 1.0/leave_other[1]
+                else:
+                    leave_non_to_other = leave_other[1]
 
-    tprobs = get_transition_probs(nstates=nstates, special_state_idx=special_state_idx, leave_special=leave_special_state, leave_non_to_special= leave_non_to_special, leave_non_to_othernon=leave_non_to_other)
+        tprobs = get_transition_probs(nstates=nstates,
+                                      special_state_idx=special_state_idx,
+                                      leave_special=leave_special_state,
+                                      leave_non_to_special= leave_non_to_special,
+                                      leave_non_to_othernon=leave_non_to_other)
     return tprobs
 
 
@@ -239,12 +255,12 @@ def help_get_initial_probs(nstates, special_state_idx, init_special, initialprob
     return iprobs
 
 
-def help_get_prob_matrices_from_params(mu, sigma, mu_scale, leave_special_state, leave_other, special_idx, init_special, initialprobs):
+def help_get_prob_matrices_from_params(mu, sigma, mu_scale, leave_special_state, leave_other, special_idx, init_special, initialprobs, transprobs):
     ## CONSTRUCT EMISSIONS PROBABILITY MATRIX FOR R
     eprobs, nstates = help_get_emission_probs(mu, sigma, mu_scale)
 
     ## CONSTRUCT TRANSITIONS PROBABILITY MATRIX FOR R
-    tprobs = help_get_transition_probs(leave_special_state, leave_other, special_idx, nstates)
+    tprobs = help_get_transition_probs(leave_special_state, leave_other, special_idx, nstates, transprobs)
     
     ## CONSTRUCT INITIAL PROBABILITY MATRIX FOR R
     iprobs = help_get_initial_probs(nstates, special_idx, init_special, initialprobs)
