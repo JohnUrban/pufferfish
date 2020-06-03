@@ -145,6 +145,14 @@ Can include a file-of-filenames (FOFN) and tarballs as well.''')
 
 
 
+
+
+
+
+
+
+
+
     ## Create sub-command parser for findpuffs
     parser_findpuffs = subparsers.add_parser('findpuffs',
                                              help='''Take in getcov bedGraphs, do stuff.''')
@@ -187,6 +195,19 @@ One probably should not do both --smoothbeforemedian and --smoothbeforecor. Pick
     parser_findpuffs.set_defaults(func=run_subtool)
     
 
+
+
+
+
+
+
+
+
+
+
+
+
+
     ## Create sub-command for dump
     parser_dump = subparsers.add_parser('dump',
                                                 help=''' Take in pickled object containing MultiCovBed object where statepath has been found.
@@ -223,6 +244,18 @@ Can use this with awk to create bedGraphs for each -- e.g. awk 'OFS="\t" {print 
     parser_dump.set_defaults(func=run_subtool)
 
 
+
+
+
+
+
+
+
+
+
+
+
+
     ## create sub-sommand for puffcn (puff copy number)
     parser_puffcn = subparsers.add_parser('puffcn',
                                           help = '''Given a latest-stage sample (where all or most puffs have grown) and an optional earliest stage sample
@@ -240,6 +273,9 @@ Use --replace_with and --replace_this to change.''')
     parser_puffcn.add_argument('--replace_with', type=str, default='0',
                                         help='''Used with --replace. Specify the character to replace the --replace_this character with.
 Must be a string that can be converted to a float. Default = '0' ''')
+
+
+    ## PROTOCOLS
     parser_puffcn_protocol = parser_puffcn.add_mutually_exclusive_group(required=True)
     parser_puffcn_protocol.add_argument('-1', '--protocol1', action='store_true', default=False,
                                         help='''Late stage (and early stage if present) bin counts are median normalized.
@@ -278,6 +314,32 @@ Note: if early is not present, this is same as protocol 5.''')
                                         help='''Late stage is normalized to early stage if available.
 Then the HMM is run.
 Note: No median normalization or smoothing is performed. If only late is given, then this is just an identity/pass-through function.''')
+
+    parser_puffcn_protocol.add_argument('-8', '--protocol8', action='store_true', default=False,
+                                        help='''SKEW. Only accepts one file (e.g. latestage).
+                                                For file with N rows, returns N-1 rows.
+                                                For each value, V[i], in 4th column, for i in 2:N, it computes Skew = (V[i]-V[i-1]) / (V[i]+V[i-1])''')
+
+    parser_puffcn_protocol.add_argument('-9', '--protocol9', action='store_true', default=False,
+                                        help='''PERCENT CHANGE. Only accepts one file (e.g. latestage).
+                                                For file with N rows, returns N-1 rows.
+                                                For each value, V[i], in 4th column, for i in 2:N, it computes Skew = 100*(V[i]-V[i-1]) / V[i-1]''')
+
+    parser_puffcn_protocol.add_argument('-10', '--protocol10', action='store_true', default=False,
+                                        help='''SKEW CHANGE or SKEW DERIVATIVE. Only accepts one file (e.g. latestage).
+                                                For file with N rows, returns N-1 rows.
+                                                For each value, V[i], in 4th column, for i in 2:N, it computes Skew = 100*(V[i]-V[i-1]) / V[i-1]''')
+
+    parser_puffcn_protocol.add_argument('-11', '--protocol11', action='store_true', default=False,
+                                        help='''PERCENT CHANGE DERIVATIVE. Only accepts one file (e.g. latestage).
+                                                For file with N rows, returns N-1 rows.
+                                                For each value, V[i], in 4th column, for i in 2:N, it computes Skew = 100*(V[i]-V[i-1]) / V[i-1]''')
+
+    parser_puffcn.add_argument('--stringcols', action='store_true', default=False,
+                               help='''Just treat columns other than 4 as strings...''')
+    
+
+
     
     parser_puffcn.add_argument('-m', '--emodel', type=str, default='normal',
                                help='''Specify emissions model to assume for HMM. Options: normal, exponential, poisson, geometric, gamma. Default: normal.
@@ -466,6 +528,13 @@ To change the initial probs manually: Provide comma-separated list of initial pr
 This must have same number of states represented as state means (--mu; default 7).
 
 ''')
+
+
+    parser_puffcn.add_argument('--transprobs', type=str, default=None,
+                               help='''Provide trans probs with semi-colon separated rows that have comma-separated values.
+E.g. a 2-state t matrix where self-self is 0.99 and self-other is 0.01 looks like: 0.99,0.01;0.01,0.99
+
+''')
 ##'0.997,0.0005,0.0005,0.0005,0.0005,0.0005,0.0005'  [0.997, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005]
 
     parser_puffcn.add_argument('--kmeans', type=int, default=None,
@@ -480,6 +549,16 @@ This option over-rides all other parameter options (which will be ignored).
 ''')
 
     parser_puffcn.set_defaults(func=run_subtool)
+
+
+
+
+
+
+
+
+
+
 
 
     ## create sub-command for summits
@@ -565,6 +644,20 @@ only retain the remaining merged regions if their maximum state is > --max_State
     parser_summits.set_defaults(func=run_subtool)
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     ## create sub-command for normalize
     parser_normalize = subparsers.add_parser('normalize',
                                           help = '''Given a latest-stage sample (where all or most puffs have grown) and an optional earliest stage sample
@@ -617,6 +710,35 @@ Note: if early is not present, this is same as protocol 6.''')
 Then late stage is normalized to early stage if available. (i.e. smooth -> L/E)
 Then the HMM is run.
 Note: if early is not present, this is same as protocol 5.''')
+
+    parser_normalize_protocol.add_argument('-7', '--protocol7', action='store_true', default=False,
+                                        help='''Late stage is normalized to early stage if available.
+Note: No median normalization or smoothing is performed. If only late is given, then this is just an identity/pass-through function.''')
+
+    parser_normalize_protocol.add_argument('-8', '--protocol8', action='store_true', default=False,
+                                        help='''SKEW. Only accepts one file (e.g. latestage).
+                                                For file with N rows, returns N-1 rows.
+                                                For each value, V[i], in 4th column, for i in 2:N, it computes Skew = (V[i]-V[i-1]) / (V[i]+V[i-1])''')
+
+    parser_normalize_protocol.add_argument('-9', '--protocol9', action='store_true', default=False,
+                                        help='''PERCENT CHANGE. Only accepts one file (e.g. latestage).
+                                                For file with N rows, returns N-1 rows.
+                                                For each value, V[i], in 4th column, for i in 2:N, it computes Skew = 100*(V[i]-V[i-1]) / V[i-1]''')
+
+    parser_normalize_protocol.add_argument('-10', '--protocol10', action='store_true', default=False,
+                                        help='''SKEW CHANGE or SKEW DERIVATIVE. Only accepts one file (e.g. latestage).
+                                                For file with N rows, returns N-1 rows.
+                                                For each value, V[i], in 4th column, for i in 2:N, it computes Skew = 100*(V[i]-V[i-1]) / V[i-1]''')
+
+    parser_normalize_protocol.add_argument('-11', '--protocol11', action='store_true', default=False,
+                                        help='''PERCENT CHANGE DERIVATIVE. Only accepts one file (e.g. latestage).
+                                                For file with N rows, returns N-1 rows.
+                                                For each value, V[i], in 4th column, for i in 2:N, it computes Skew = 100*(V[i]-V[i-1]) / V[i-1]''')
+
+
+
+    parser_normalize.add_argument('--stringcols', action='store_true', default=False,
+                               help='''Just treat columns other than 4 as strings...''')
     
     parser_normalize.add_argument('-c', '--collapsed', action='store_true', default=False,
                                help='''Return collapsed variable-step bedGraph instead of expanded single-step bedGraph.
@@ -653,7 +775,7 @@ Try: 10000.''')
 
 
 ###########GENERATE
-        ## create sub-sommand for puffcn (puff copy number)
+        ## create sub-sommand for generate
     parser_generate = subparsers.add_parser('generate',
                                           help = '''Generate emitted_data and statepath bedGraphs.''')
 
