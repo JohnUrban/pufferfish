@@ -48,12 +48,19 @@ TMP_DIR = ".pufferfish_tmp_dir"
 TMP_DIR = TMP_DIR[1:]
 
 class CovBed(object):
-    def __init__(self, covbedfile, count_only=False, replace=False, replace_with='0', replace_this='.'):
+    def __init__(self,
+                 covbedfile,
+                 count_only=False,
+                 replace=False,
+                 replace_with='0',
+                 replace_this='.',
+                 stringcols=False):
         ## "replace" means if you see the "replace_this" character in the count column, make it "replace_with"
         ## Made to deal with "." --> 0 by default when replace used.
         self.fopen = False
         self.connection = None
         self.file = covbedfile
+        self.stringcols = stringcols
         self.start = {}
         self.end = {}
         self.count = {}
@@ -104,7 +111,10 @@ class CovBed(object):
             chrom, start, end, count = line.strip().split()
             if replace and count == replace_this:
                 count = replace_with
-            self._update_data(chrom, int(start), int(end), float(count))
+            if self.stringcols:
+                self._update_data(chrom, start, end, float(count))
+            else:
+                self._update_data(chrom, int(start), int(end), float(count))
             ### JAN 9, 2018 -- I changed above int(float(count)) to float(count)
             ###         At this point, I don't know what it might break...
             ##          But now that I am using this more generally for signal data - not just counts - I need it as float
@@ -187,6 +197,9 @@ class CovBed(object):
             return self.expanded_bdg(bdg)
         else:
             return self.collapsed_bdg(bdg)
+    
+
+
 
     def filtered_bdg(self, relation = ">", value = 0, bdg=None):
         ##bdg is just what should be in the 4th column
@@ -237,6 +250,46 @@ class CovBed(object):
 ##            sys.stderr.write(str(np.array(k[1]))+"\n\n\n")
 ####            quit()
 
+
+    def computeSkew(self):
+        ''' Converts values, V, in counts to skew = (V[i]-V[i-1]) / (V[i]+V[i-1]).
+        For i in 2:N. The first element is 0.'''
+        for chrom in self.chromosomes:
+            n = len(self.count[chrom])
+            Next = self.count[chrom][1:n]
+            Prev = self.count[chrom][:n-1]
+            Diff = (Next - Prev)*100.0 ## 100.0 to ensure floats
+            Sum = (Next + Prev)*1.0 ## 1.0 to ensure floats
+            Skew = [0.0] + list(Diff / Sum)
+            self.count[chrom] = np.array(Skew)
+
+    def computePercentChange(self):
+        ''' Converts values, V, in counts to skew = (V[i]-V[i-1]) / V[i-1].
+        For i in 2:N. The first element is 0.'''
+        for chrom in self.chromosomes:
+            n = len(self.count[chrom])
+            Next = self.count[chrom][1:n]
+            Prev = self.count[chrom][:n-1]
+            Diff = (Next - Prev)*100.0 ## 100.0 to ensure floats, and make as Pct
+            PctChange = [0.0] + list(Diff / Prev)
+            self.count[chrom] = np.array(PctChange)
+
+    def computeSkewChange(self):
+        self.computeSkew()
+        for chrom in self.chromosomes:
+            n = len(self.count[chrom])
+            Next = self.count[chrom][1:n]
+            Prev = self.count[chrom][:n-1]
+            Diff = (Next - Prev)*1.0 ## 1.0 to ensure floats
+            PctChange = [0.0] + list(Diff / 200.0) ## /200 b/c Skew was mult by 100 and I want to divide by 2 (similar to Hyrien segmentaiton of RFD)
+            self.count[chrom] = np.array(PctChange)
+
+    def computePercentChangeDerivative(self):
+        ''' Converts values, V, in counts to skew = (V[i]-V[i-1]) / V[i-1].
+        For i in 2:N. The first element is 0.'''
+        self.computePercentChange()
+        self.computePercentChange()
+            
     def normalize_to_other(self, other, pseudocount=0.01):
         #other is another CovBed object with same bins from same genome
         for chrom in self.chromosomes:
