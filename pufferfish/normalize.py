@@ -3,61 +3,155 @@ from CovBedClass import *
 from pk2txt import bdgmsg, newmsg
 
 
-def protocol1(late, early, pseudocount=0.1):
-    late.median_normalize_data()
-    if early:
-        early.median_normalize_data()
-        late.normalize_to_other(early, pseudocount)
-    return late
+class NormalizeProtocol(object):
+    def __init__(self, args):
+        #latestage, protocol=1, earlystage=False, pseudo=0.1, bandwidth=2500, quiet=False, impute=False, replace=False, replace_with='0', replace_this='.'
+        self.args = args
+        self._normalize()
+        
+    def _set_protocol(self):
+        if self.args.protocol1:
+            self.protocol = 1
+            self._run_protocol = self._protocol1
+        elif self.args.protocol2:
+            self.protocol = 2
+            self._run_protocol = self._protocol2
+        elif self.args.protocol3:
+            self.protocol = 3
+            self._run_protocol = self._protocol3
+        elif self.args.protocol4:
+            self.protocol = 4
+            self._run_protocol = self._protocol4
+        elif self.args.protocol5:
+            self.protocol = 5
+            self._run_protocol = self._protocol5
+        elif self.args.protocol6:
+            self.protocol = 6
+            self._run_protocol = self._protocol6
+        elif self.args.protocol7:
+            self.protocol = 7
+            self._run_protocol = self._protocol7
+        elif self.args.protocol8:
+            self.protocol = 8
+            self._run_protocol = self._protocol8
+        elif self.args.protocol9:
+            self.protocol = 9
+            self._run_protocol = self._protocol9
+        elif self.args.protocol10:
+            self.protocol = 10
+            self._run_protocol = self._protocol10
+        elif self.args.protocol11:
+            self.protocol = 11
+            self._run_protocol = self._protocol11
 
-def protocol2(late, early, bw=10000, pseudocount=0.1):
-    print late.get_median()
-    late.ksmooth_counts(bw=bw)
-    late.median_normalize_data()
-    if early:
-        early.ksmooth_counts(bw=bw)
-        early.median_normalize_data()
-        late.normalize_to_other(early, pseudocount)
-    return late
+    def _protocol1(self):
+        self.late.median_normalize_data()
+        if self.early:
+            self.early.median_normalize_data()
+            self.late.normalize_to_other(self.early,
+                                              self.args.pseudocount)
 
-def protocol3(late, early, bw=10000, pseudocount=0.1):
-    late.median_normalize_data()
-    late.ksmooth_counts(bw=bw)
-    if early:
-        early.median_normalize_data()
-        early.ksmooth_counts(bw=bw)
-        late.normalize_to_other(early, pseudocount)
-    return late
+    def _protocol2(self):
+        print self.late.get_median()
+        self.late.ksmooth_counts(bw=self.args.bandwidth)
+        self.late.median_normalize_data()
+        if self.early:
+            self.early.ksmooth_counts(bw=self.args.bandwidth)
+            self.early.median_normalize_data()
+            self.late.normalize_to_other(self.early,
+                                              self.args.pseudocount)
 
-def protocol4(late, early, bw=10000, pseudocount=0.1):
-    late.median_normalize_data()
-    if early:
-        early.median_normalize_data()
-        late.normalize_to_other(early, pseudocount)
-    late.ksmooth_counts(bw=bw)
-    return late
+    def _protocol3(self):
+        self.late.median_normalize_data()
+        self.late.ksmooth_counts(bw=self.args.bandwidth)
+        if self.early:
+            self.early.median_normalize_data()
+            self.early.ksmooth_counts(bw=self.args.bw)
+            self.late.normalize_to_other(self.early,
+                                         self.args.pseudocount)
 
-def protocol5(late, early, bw=10000, pseudocount=0.1):
-    #smoothing only --  late/early before smooth
-    if early:
-        late.normalize_to_other(early, pseudocount)
-    late.ksmooth_counts(bw=bw)
-    return late
+    def _protocol4(self):
+        self.late.median_normalize_data()
+        if self.early:
+            self.early.median_normalize_data()
+            self.late.normalize_to_other(self.early,
+                                         self.args.pseudocount)
+        self.late.ksmooth_counts(bw=self.args.bandwidth)
 
-def protocol6(late, early, bw=10000, pseudocount=0.1):
-    #smoothing only --  late/early AFTER smooth
-    late.ksmooth_counts(bw=bw)
-    if early:
-        early.ksmooth_counts(bw=bw)
-        late.normalize_to_other(early, pseudocount)
-    return late
+    def _protocol5(self):
+        #smoothing only --  late/early before smooth
+        if self.early:
+            self.late.normalize_to_other(self.early,
+                                         self.args.pseudocount)
+        self.late.ksmooth_counts(bw=self.args.bandwidth)
 
-def protocol7(late, early, pseudocount=0.1):
-    #no smoothing, no median norm
-    # late:early only if early present
-    if early:
-        late.normalize_to_other(early, pseudocount)
-    return late
+    def _protocol6(self):
+        #smoothing only --  late/early AFTER smooth
+        self.late.ksmooth_counts(bw=self.args.bandwidth)
+        if self.early:
+            self.early.ksmooth_counts(bw=self.args.bandwidth)
+            self.late.normalize_to_other(self.early,
+                                         self.args.pseudocount)
+
+    def _protocol7(self):
+        #no smoothing, no median norm
+        # late:early only if early present
+        if self.early:
+            self.late.normalize_to_other(self.early, pseudocount)
+
+    def _protocol8(self):
+        self.late.computeSkew()
+
+    def _protocol9(self):
+        self.late.computePercentChange()
+
+    def _protocol10(self):
+        self.late.computeSkewChange()
+
+    def _protocol11(self):
+        self.late.computePercentChange()
+
+        
+    def _normalize(self):
+        if not self.args.quiet:
+            newmsg("loading late stage file")
+        self.late = CovBed(self.args.latestage,
+                      replace=self.args.replace,
+                      replace_with=self.args.replace_with,
+                      replace_this=self.args.replace_this,
+                      stringcols=self.args.stringcols)
+        if self.args.impute:
+            if not self.args.quiet:
+                newmsg("imputing late stage bins with missing data")
+            self.late.impute_zeros(bw=self.args.impute)
+                
+        if self.args.earlystage:
+            if not self.args.quiet:
+                newmsg("loading early stage file")
+            self.early = CovBed(self.args.earlystage,
+                                replace=self.args.replace,
+                                replace_with=self.args.replace_with,
+                                replace_this=self.args.replace_this,
+                                stringcols=self.args.stringcols)
+            if self.args.impute:
+                if not self.args.quiet:
+                    newmsg("imputing early stage bins with missing data")
+                self.early.impute_zeros(bw=self.args.impute)
+        else:
+            self.early = False
+        ## todo -- add filtering out 0 contigs option...
+        
+
+        if not self.args.quiet:
+            if self.args.earlystage:
+                emsg = ' with additional early stage normalization'
+            else:
+                emsg = ' without additional early stage normalization'
+            
+        self._set_protocol()
+        newmsg("following normalization protocol "+str(self.protocol)+emsg)
+        self._run_protocol()
+
 
 ##TODO - allow imputing values locally when a bin is 0 -- i.e. if surrounded by 2 bins with values >0, take average.
 ## various 0 spots are causing short state changes in the CN hmm.
@@ -76,79 +170,14 @@ def protocol7(late, early, pseudocount=0.1):
 ##  then late will get value close to other values, but early will remain near 0 -- so you get massive spike
 ##  would want to change same bins in both samples...
 ##  didnt seem to change state path at all
-def normalize(latestage, protocol=1, earlystage=False, pseudo=0.1, bandwidth=2500, quiet=False, impute=False, replace=False, replace_with='0', replace_this='.'):
-    if not quiet:
-        newmsg("loading late stage file")
-    late = CovBed(latestage, replace=replace, replace_with=replace_with, replace_this=replace_this)
-    if impute:
-        if not quiet:
-            newmsg("imputing late stage bins with missing data")
-        late.impute_zeros(bw=impute)
-            
-    if earlystage:
-        if not quiet:
-            newmsg("loading early stage file")
-        early = CovBed(earlystage, replace=replace, replace_with=replace_with, replace_this=replace_this)
-        if impute:
-            if not quiet:
-                newmsg("imputing early stage bins with missing data")
-            early.impute_zeros(bw=impute)
-    else:
-        early = False
-    ## todo -- add filtering out 0 contigs option...
-    
 
-    if not quiet:
-        if earlystage:
-            emsg = ' with additional early stage normalization'
-        else:
-            emsg = ' without additional early stage normalization'
-        if protocol == 1:
-            newmsg("following normalization protocol 1"+emsg)
-        elif protocol == 2:
-            newmsg("following normalization protocol 2"+emsg)
-        elif protocol == 3:
-            newmsg("following normalization protocol 3"+emsg)
-        elif protocol == 4:
-            newmsg("following normalization protocol 4"+emsg)
-        elif protocol == 5:
-            newmsg("following normalization protocol 5"+emsg)
-        elif protocol == 6:
-            newmsg("following normalization protocol 6"+emsg)
-        elif protocol == 7:
-            newmsg("following normalization protocol 7"+emsg)
-    if protocol == 1:
-        late = protocol1(late, early, pseudo)
-    elif protocol == 2:
-        late = protocol2(late, early, bandwidth, pseudo)
-    elif protocol == 3:
-        late = protocol3(late, early, bandwidth, pseudo)
-    elif protocol == 4:
-        late = protocol4(late, early, bandwidth, pseudo)
-    elif protocol == 5:
-        late = protocol5(late, early, bandwidth, pseudo)
-    elif protocol == 6:
-        late = protocol6(late, early, bandwidth, pseudo)
-    elif protocol == 7:
-        late = protocol7(late, early, pseudo)
-    return late
-
+        
 
 def run(parser, args):
-    ## TODO - just change to 1 argument: --protocol -- with options [1,2,3,4]
-    if args.protocol1:
-        protocol=1
-    elif args.protocol2:
-        protocol=2
-    elif args.protocol3:
-        protocol=3
-    elif args.protocol4:
-        protocol=4
-    elif args.protocol5:
-        protocol=5
-    elif args.protocol6:
-        protocol=6
-    elif args.protocol7:
-        protocol=7
-    late = normalize(latestage=args.latestage, protocol=protocol, earlystage=args.earlystage, pseudo=args.pseudo, bandwidth=args.bandwidth, quiet=args.quiet, impute=args.impute, replace=args.replace, replace_with=args.replace_with, replace_this=args.replace_this)
-    sys.stdout.write( late.get_bdg(late.count, args.collapsed) )
+    protocol = NormalizeProtocol(args)
+    sys.stdout.write(
+        protocol.late.get_bdg(
+            protocol.late.count,
+            args.collapsed
+            )
+        )
