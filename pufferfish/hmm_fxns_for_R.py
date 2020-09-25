@@ -1,5 +1,8 @@
 from CovBedClass import *
 from collections import defaultdict
+import numpy as np
+from scipy import stats as sps
+from pk2txt import bdgmsg, newmsg
 
 ## PREVIOUSLY THIS FUNCTION USED VARIABLES DEFINED INSIDE R.
 ## NEWER VERSION BELOW USES ONLY VARIABLES DEFINED IN PYTHON FIRST.
@@ -24,29 +27,205 @@ from collections import defaultdict
 
 ## NEWER VERSION OF HMM7 BELOW USES ONLY VARIABLES DEFINED IN PYTHON -- SEE PROBABILITY MATRICES BELOW.
 ## IT ALSO ALLOWS SOME TOGGLING OF HMM PARAMETERS
-def hmmR(late, path, emodel, eprobs=None, tprobs=None, iprobs=None):
+
+def viterbipath(late, emodel, eprobs, tprobs, iprobs, states):
+    statepath = {}
+    for chrom in late.chromosomes:
+    ##            sys.stderr.write( chrom + "\n" )
+        if len(late.count[chrom]) > 1:
+            v = puffR.viterbi_puff(emissions = eprobs, transitions = tprobs, initial = iprobs, states = states, emitted_data = fltvec(late.count[chrom]), emodel = emodel, logprobs=False)
+            statepath[chrom] = list(v[0])
+        else:
+            statepath[chrom] = [0] ## if only 1 bin, assign a non-state
+    return statepath
+
+def posteriorpath(late, emodel, eprobs, tprobs, iprobs, states):
+    statepath = {}
+    for chrom in late.chromosomes:
+        f = puffR.forward_puff(emissions = eprobs, transitions = tprobs, initial = iprobs, states = states, emitted_data = fltvec(late.count[chrom]), emodel = emodel, logprobs=False)
+        b = puffR.backward_puff(emissions = eprobs, transitions = tprobs, initial = iprobs, states = states, emitted_data = fltvec(late.count[chrom]), emodel = emodel, logprobs=False)
+        p = posterior(f[0], b[0], [1,2,3,4,5,6,7])
+        statepath[chrom] = list(p[0])
+    return statepath
+
+def findstatepath(late, path, emodel, eprobs, tprobs, iprobs, states):
+    if path == 'viterbi':
+        statepath = viterbipath(late, emodel, eprobs, tprobs, iprobs, states)
+    elif path == 'posterior':
+        statepath = posteriorpath(late, emodel, eprobs, tprobs, iprobs, states)
+    return statepath
+
+
+def learn_iprobs(late, statepath, nstates, learnpseudo=1e-323):
+    inits = [learnpseudo]*nstates
+    for chrom in late.chromosomes:
+        for state in statepath[chrom]:
+            if state > 0:
+                inits[int(state)-1] += 1
+
+    r_iprobs, np_iprobs = get_initial_probs(inits=inits)
+    return r_iprobs, np_iprobs
+
+def learn_tprobs(late, statepath, nstates, learnpseudo=1e-323):
+    ## FOR NUMPY (and passed to For R)
+    np_tprobs = np.zeros((nstates,nstates)) + learnpseudo
+    for chrom in late.chromosomes:
+        for x in range(1, len(statepath[chrom])):
+            state_i = int(statepath[chrom][x-1])-1
+            state_j = int(statepath[chrom][x])-1
+            if state_i >= 0 and state_j >= 0:
+                np_tprobs[state_i, state_j] += 1
+    np_tprobs = (np_tprobs.transpose()/np_tprobs.sum(1)).transpose()
+    ## FOR R
+    rowsvec = []
+    for i in range(nstates):
+        rowsvec += list(np_tprobs[i,])
+    rowsvecr = fltvec(rowsvec)
+    r_tprobs = matrixr(rowsvecr, nrow=nstates, byrow=True)
+    ## Returns
+    return r_tprobs, np_tprobs
+
+def learn_eprobs(late, statepath, nstates, old_np_eprobs, emodel="normal", learnpseudo=1e-323, constrain=False):
+    if not constrain:
+        edict = {state:[] for state in range(nstates)}
+        for chrom in late.chromosomes:
+            for x in range(len(statepath[chrom])):
+                state = int(statepath[chrom][x])-1
+                if state >= 0:
+                    edict[state].append( late.count[chrom][x] )
+    if emodel == "discrete":
+        nsym = old_np_eprobs.shape[1]
+        np_eprobs = old_np_eprobs
+        if not constrain:
+            ## For numpy
+            for state in range(nstates):
+                if edict[state]:
+                    edict[state] = np.array(edict[state])
+                    symcounts = dict(zip(*np.unique(edict[state], return_counts=True)))
+                    for sym in range(nsym):
+                        if sym in symcounts.keys():
+                            np_eprobs[state, sym] = symcounts[sym]
+                        else:
+                            np_eprobs[state, sym] = learnpseudo
+                else: ## no updates to learn, stays as initialized (old_np_probs)
+                    pass ## the else statement unnec, but in place to remind me
+            np_eprobs = (np_eprobs.transpose()/np_eprobs.sum(1)).transpose()
+
+        ## For R
+        tmp = []
+        for i in range(np_eprobs.shape[0]):
+            tmp.append(
+                    fltvec(
+                        list( np_eprobs[i,:] )
+                    )
+                )
+        emat = tmp[0]
+        for i in range(1,len(tmp)):
+            emat += tmp[i]
+        r_eprobs = matrixr(emat, nrow=nstates, byrow=True) 
+
+
+
+    else: ## PARAMETERIZED DISTROS
+        ## For numpy
+        np_eprobs = old_np_eprobs ##np.zeros((2,nstates))
+        if not constrain:
+            for state in range(nstates):
+                if edict[state]:
+                    edict[state] = np.array(edict[state])
+                    np_eprobs[0, state] = edict[state].mean()
+                    np_eprobs[1, state] = edict[state].std(ddof=1)
+                else: ## no updates to learn, stays as initialized (old_np_probs)
+                    pass ## the else statement unnec, but in place to remind me
+        ## For R
+        mu = fltvec(list(np_eprobs[0,:]))
+        sig = fltvec(list(np_eprobs[1,:]))
+        r_eprobs = matrixr(mu+sig, nrow=2, byrow=True)
+
+    return r_eprobs, np_eprobs
+
+
+def updateparameters(late, statepath, nstates, old_np_eprobs, learnpseudo=1e-323, emodel="normal", emitpseudo=1e-7, constrainEmit=False):
+    r_iprobs, np_iprobs = learn_iprobs(late, statepath, nstates)
+    r_tprobs, np_tprobs = learn_tprobs(late, statepath, nstates, learnpseudo=learnpseudo)
+    r_eprobs, np_eprobs = learn_eprobs(late, statepath, nstates, old_np_eprobs=old_np_eprobs, emodel=emodel, learnpseudo=emitpseudo, constrain=constrainEmit)
+    return r_eprobs, r_tprobs, r_iprobs, np_eprobs, np_tprobs, np_iprobs
+
+
+def log10_prob_state_path_eNormal(late, statepath, np_eprobs, np_tprobs, np_iprobs):
+    logprob = 0.0
+    for chrom in late.chromosomes:
+        ## GET all possible Eprobs in one fell swoop -- believe it or not, this is MUCH faster than getting one at a time in loop
+        epd = {es:np.log10(
+                sps.norm(np_eprobs[0, es],
+                         np_eprobs[1, es]).pdf(
+                             late.count[chrom])
+                ) for es in range(np_tprobs.shape[0])}
+        ## Initial prob and initial emission prob:
+        init_state = int(statepath[chrom][0])-1
+        if init_state >= 0: # zero reserved for errors (e.g. contigs too small)
+            ## add init
+            logprob += np.log10(np_iprobs[init_state])
+            ## add emit
+            ## OLD METH: logprob += np.log10( sps.norm(np_eprobs[0, init_state], np_eprobs[1, init_state]).pdf( late.count[chrom][0]) )
+            logprob += epd[init_state][0]
+        ## ITER FOR TRANS AND EMIT PROBS
+        for x in range(1, len(statepath[chrom])):
+            state_i = int(statepath[chrom][x-1])-1
+            state_x = int(statepath[chrom][x])-1
+            if state_i >= 0 and state_x >= 0:
+                ## Add trans
+                logprob += np.log10(np_tprobs[state_i, state_x])
+                ## Add emit
+                ## OLD METH: logprob += np.log10( sps.norm(np_eprobs[0, state_x], np_eprobs[1, state_x]).pdf( late.count[chrom][x]) )
+                logprob += epd[state_x][x]
+        ## FOR DEVEL: newmsg(chrom + '\t' + str(logprob))
+    return logprob
+
+def log10_prob_state_path_eDiscrete(late, statepath, np_eprobs, np_tprobs, np_iprobs):
+    logprob = 0.0
+    for chrom in late.chromosomes:
+        ## Initial prob and initial emission prob:
+        init_state = int(statepath[chrom][0])-1
+        if init_state >= 0: # zero reserved for errors (e.g. contigs too small)
+            ## add init
+            logprob += np.log10(np_iprobs[init_state])
+            ## add emit
+            ## OLD METH: logprob += np.log10( sps.norm(np_eprobs[0, init_state], np_eprobs[1, init_state]).pdf( late.count[chrom][0]) )
+            logprob += np.log10( np_eprobs[init_state, 0] )
+        ## ITER FOR TRANS AND EMIT PROBS
+        for x in range(1, len(statepath[chrom])):
+            state_i = int(statepath[chrom][x-1])-1
+            state_x = int(statepath[chrom][x])-1
+            if state_i >= 0 and state_x >= 0:
+                ## Add trans
+                logprob += np.log10(np_tprobs[state_i, state_x])
+                ## Add emit
+                ## "Discrete" assumes the symbols emitted are sequential integers from 1:N where N = number states.
+                ## Therefore, for proper pythonese indexing 1 needs to be subtracted from the observed emitted symbol
+                emit = int(late.count[chrom][x] - 1) ## 
+                logprob += np.log10( np_eprobs[state_x, emit] )
+        ## FOR DEVEL: newmsg(chrom + '\t' + str(logprob))
+    return logprob
+
+def log10_prob_state_path(late, statepath, np_eprobs, np_tprobs, np_iprobs, emodel):
+    if emodel == "normal":
+        return log10_prob_state_path_eNormal(late, statepath, np_eprobs, np_tprobs, np_iprobs)
+    elif emodel == "discrete":
+        return log10_prob_state_path_eDiscrete(late, statepath, np_eprobs, np_tprobs, np_iprobs)
+
+
+    
+def hmmR(late, path, emodel, eprobs=None, tprobs=None, iprobs=None, iters=1):
     if eprobs is None:
         eprobs = emissions7()
     if tprobs is None:
         tprobs = transitions7()
     if iprobs is None:
         iprobs = initial7()
-    states = intvec(range(1,len(iprobs)+1))
-    statepath = {}
-    if path == 'viterbi':
-        for chrom in late.chromosomes:
-##            sys.stderr.write( chrom + "\n" )
-            if len(late.count[chrom]) > 1:
-                v = puffR.viterbi_puff(emissions = eprobs, transitions = tprobs, initial = iprobs, states = states, emitted_data = fltvec(late.count[chrom]), emodel = emodel, logprobs=False)
-                statepath[chrom] = list(v[0])
-            else:
-                statepath[chrom] = [0] ## if only 1 bin, assign a non-state
-    elif path == 'posterior':
-        for chrom in late.chromosomes:
-            f = puffR.forward_puff(emissions = eprobs, transitions = tprobs, initial = iprobs, states = states, emitted_data = fltvec(late.count[chrom]), emodel = emodel, logprobs=False)
-            b = puffR.backward_puff(emissions = eprobs, transitions = tprobs, initial = iprobs, states = states, emitted_data = fltvec(late.count[chrom]), emodel = emodel, logprobs=False)
-            p = posterior(f[0], b[0], [1,2,3,4,5,6,7])
-            statepath[chrom] = list(p[0])            
+    states = intvec(range(1,len(iprobs)+1))  
+    ## Find state path with current parameters.
+    statepath = findstatepath(late, path, emodel, eprobs, tprobs, iprobs, states)           
     return statepath
 
 def generate_hmmR(late, emodel, eprobs=None, tprobs=None, iprobs=None):
@@ -67,14 +246,31 @@ def generate_hmmR(late, emodel, eprobs=None, tprobs=None, iprobs=None):
 
 
 ## FXNS TO HELP GENERATE PROB MATRICES FOR R
-def get_emission_probs(mu=[1,2,4,8,16,32,64],sig=None):
-    mu = fltvec(mu)
-    if sig is None:
-        sig = fltvec([e**0.5 for e in mu])
+def get_emission_probs(mu=[1,2,4,8,16,32,64],sig=None, discrete=False):
+    
+    if discrete:
+        # For numpy
+        nstates = len(mu) # mu is a list of lists
+        np_eprobs = np.array(mu, dtype=float)
+        # For R
+        tmp = []
+        for statelist in mu:
+            tmp.append( fltvec(statelist) )
+        emat = tmp[0]
+        for i in range(1,len(tmp)):
+            emat += tmp[i]
+        r_eprobs = matrixr(emat, nrow=nstates, byrow=True) 
     else:
-        sig = fltvec(sig)
-    eprobmat = matrixr(mu+sig, nrow=2, byrow=True)
-    return eprobmat
+        # For numpy
+        np_eprobs = np.array([mu, sig], dtype=float)
+        # For R
+        mu = fltvec(mu)
+        if sig is None:
+            sig = fltvec([e**0.5 for e in mu])
+        else:
+            sig = fltvec(sig)
+        r_eprobs = matrixr(mu+sig, nrow=2, byrow=True) 
+    return r_eprobs, np_eprobs
 
 
 ##def get_transition_probs(nstates=7, changestate=0.001, samestate=0.999):
@@ -94,38 +290,42 @@ def get_transition_probs(nstates=7, special_state_idx=0, leave_special=0.001, le
     stay_non = 1 - leave_non_to_special - (leave_non_to_othernon * (nstates-2))
     nonspecial = range(nstates)
     nonspecial.pop(special_state_idx)
-    t = np.zeros([nstates,nstates], dtype=float)
+    np_tprobs = np.zeros([nstates,nstates], dtype=float)
     
     for i in range(nstates):
         ## mark whole row as non to other non
-        t[i,] = leave_non_to_othernon
+        np_tprobs[i,] = leave_non_to_othernon
         ## mark cell to special
-        t[i, special_state_idx] = leave_non_to_special
+        np_tprobs[i, special_state_idx] = leave_non_to_special
         ## mark all diagonal as non to self
-        t[i,i] = stay_non
+        np_tprobs[i,i] = stay_non
 
     ## mark entire row of special to other states as leave_special
-    t[special_state_idx,] = leave_special
+    np_tprobs[special_state_idx,] = leave_special
     ## mark special-to-self
-    t[special_state_idx, special_state_idx] = stay_special
+    np_tprobs[special_state_idx, special_state_idx] = stay_special
     ## ensure all rows sum to 1
     for i in range(nstates):
-      t[i,] = t[i,]/sum(t[i,])
+      np_tprobs[i,] = np_tprobs[i,]/sum(np_tprobs[i,])
     ##convert to R
     rowsvec = []
     for i in range(nstates):
         rowsvec += list(t[i,])
     rowsvecr = fltvec(rowsvec)
-    return matrixr(rowsvecr, nrow=nstates, byrow=True)
+    r_tprobs = matrixr(rowsvecr, nrow=nstates, byrow=True)
+    return r_tprobs, np_tprobs
 
 def get_transition_probs_from_str(transprobstr):
-    t = np.array([[float(j) for j in e.split(',')] for e in transprobstr.split(';')])
-    nstates = t.shape[0]
+    ## For numpy
+    np_tprobs = np.array([[float(j) for j in e.split(',')] for e in transprobstr.split(';')])
+    nstates = np_tprobs.shape[0]
+    ## For R
     rowsvec = []
     for i in range(nstates):
-        rowsvec += list(t[i,])
+        rowsvec += list(np_tprobs[i,])
     rowsvecr = fltvec(rowsvec)
-    return matrixr(rowsvecr, nrow=nstates, byrow=True)
+    r_tprobs = matrixr(rowsvecr, nrow=nstates, byrow=True)
+    return r_tprobs, np_tprobs
 
 
 def get_initial_probs(nstates=7, special_state_idx=0, special_state=0.997, other_states=None, inits=None):
@@ -137,8 +337,10 @@ def get_initial_probs(nstates=7, special_state_idx=0, special_state=0.997, other
         inits[special_state_idx] = special_state
     ##    return matrixr( fltvec([0.997] + [0.0005]*6), nrow=1 )
     ## ENSURE it sums to 1
-    inits = list( np.array(inits)/np.array(inits).sum() )
-    return matrixr( fltvec(inits), nrow=1 )
+    np_iprobs = np.array(inits, dtype=float)
+    np_iprobs = np_iprobs/np_iprobs.sum()
+    r_iprobs = matrixr( fltvec(list(np_iprobs)), nrow=1 )
+    return r_iprobs, np_iprobs
 
 
 
@@ -182,25 +384,36 @@ def get_levels(states):
 
 
 ### These help clean up the sub-program files
-def help_get_emission_probs(mu, sigma=None, mu_scale=None):
+def help_get_emission_probs(mu, sigma=None, mu_scale=None, discrete=False):
     '''mu is a string w/ comma-separated state means
         sigma is a string with comma-sep stat stdevs
         RETURNS: e_prob matrix and nstates'''
+
     ## emissions: determine state means
-    e_mu = [float(e) for e in mu.strip().strip('\\').split(',')]
-    ## emissions: determine number of states from state means
-    nstates = len(e_mu)
-    ## emissions: determine state sigmas
-    if sigma is not None:
-        e_sig = [float(e) for e in sigma.strip().split(',')]
-    elif mu_scale is not None: 
-        e_sig = [e*mu_scale for e in e_mu]
+    if discrete:
+        e_mu = [[float(e) for e in E.split(',')] for E in mu.strip().strip('\\').split(';')]
     else:
-        e_sig = [e**0.5 for e in e_mu]
-    assert len(e_sig) == nstates
-    ## emissions: get R object
-    eprobs = get_emission_probs(mu=e_mu, sig=e_sig)
-    return eprobs, nstates
+        e_mu = [float(e) for e in mu.strip().strip('\\').split(',')]
+
+    ## emissions: determine number of states from state means
+    nstates = len(e_mu) ## works for all options (discrete=True being the new option in question)
+
+    ## emissions: determine state sigmas
+    if discrete:
+        e_sig = None
+    else:
+        if sigma is not None:
+            e_sig = [float(e) for e in sigma.strip().split(',')]
+        elif mu_scale is not None: 
+            e_sig = [e*mu_scale for e in e_mu]
+        else:
+            e_sig = [e**0.5 for e in e_mu]
+        assert len(e_sig) == nstates
+
+    ######### For numpy :::: np_eprobs = np.array([e_mu, e_sig], dtype=float)
+    ## For numpy AND for R
+    r_eprobs, np_eprobs = get_emission_probs(mu=e_mu, sig=e_sig, discrete=discrete)
+    return r_eprobs, np_eprobs, nstates
 
 
 def help_get_transition_probs(leave_special_state, leave_other, special_state_idx, nstates, transprobs):
@@ -209,9 +422,11 @@ def help_get_transition_probs(leave_special_state, leave_other, special_state_id
         leave_other is probability of leaving a non-special state
         special_state_idx is the 0-based idx of where to find special state params
         nstates is number of states in model
+        transprobs = 
     '''
+    ##For R:
     if transprobs is not None:
-        tprobs = get_transition_probs_from_str(transprobs)
+        r_tprobs, np_tprobs = get_transition_probs_from_str(transprobs)
     else:
         if leave_special_state > 1:
             leave_special_state = 1.0/leave_special_state
@@ -237,38 +452,43 @@ def help_get_transition_probs(leave_special_state, leave_other, special_state_id
                 else:
                     leave_non_to_other = leave_other[1]
 
-        tprobs = get_transition_probs(nstates=nstates,
+        r_tprobs, np_tprobs = get_transition_probs(nstates=nstates,
                                       special_state_idx=special_state_idx,
                                       leave_special=leave_special_state,
                                       leave_non_to_special= leave_non_to_special,
                                       leave_non_to_othernon=leave_non_to_other)
-    return tprobs
+    return r_tprobs, np_tprobs
 
 
 def help_get_initial_probs(nstates, special_state_idx, init_special, initialprobs=None):
     if initialprobs is None:
-        iprobs = get_initial_probs(nstates=nstates, special_state_idx=special_state_idx, special_state=init_special)
+        r_iprobs, np_iprobs = get_initial_probs(nstates=nstates, special_state_idx=special_state_idx, special_state=init_special)
     else:
         inits = [float(e) for e in initialprobs.strip().split(',')]
-        iprobs = get_initial_probs(inits=inits)
-    assert len(iprobs) == nstates
-    return iprobs
+        ##np_iprobs = np.array(inits)
+        r_iprobs, np_iprobs = get_initial_probs(inits=inits)
+    assert len(r_iprobs) == nstates 
+    return r_iprobs, np_iprobs
 
 
-def help_get_prob_matrices_from_params(mu, sigma, mu_scale, leave_special_state, leave_other, special_idx, init_special, initialprobs, transprobs):
+def help_get_prob_matrices_from_params(mu, sigma, mu_scale, leave_special_state, leave_other, special_idx, init_special, initialprobs, transprobs, discrete=False):
     ## CONSTRUCT EMISSIONS PROBABILITY MATRIX FOR R
-    eprobs, nstates = help_get_emission_probs(mu, sigma, mu_scale)
+    r_eprobs, np_eprobs, nstates = help_get_emission_probs(mu, sigma, mu_scale, discrete)
 
     ## CONSTRUCT TRANSITIONS PROBABILITY MATRIX FOR R
-    tprobs = help_get_transition_probs(leave_special_state, leave_other, special_idx, nstates, transprobs)
+    r_tprobs, np_tprobs = help_get_transition_probs(leave_special_state, leave_other, special_idx, nstates, transprobs)
     
     ## CONSTRUCT INITIAL PROBABILITY MATRIX FOR R
-    iprobs = help_get_initial_probs(nstates, special_idx, init_special, initialprobs)
+    r_iprobs, np_iprobs = help_get_initial_probs(nstates, special_idx, init_special, initialprobs)
 
-    return eprobs, tprobs, iprobs
+    return r_eprobs, r_tprobs, r_iprobs, np_eprobs, np_tprobs, np_iprobs
 
 
 
+
+
+
+## KMEANS STUFF
 def k_state_means(data, k):
     return kmeans(x=data, centers=k)
 
@@ -320,7 +540,7 @@ def get_k_mean_cluster_initial_probs(km_lengths):
 
 ## this method is not yet implemented in full work flow
 def get_k_mean_cluster_trans_probs_matrix(km):
-    t = np.ones([len(km[1]), len(km[1])]) ## all start w/ pseudo count of 1
+    t = np.ones([len(km[1]), len(km[1])], dtype=float) ## all start w/ pseudo count of 1
     for i in range(1,len(km[0])):
         c_from = km[0][i-1] - 1 #for python array indexing
         c_to = km[0][i] - 1 #for python array indexing
@@ -331,7 +551,7 @@ def get_k_mean_cluster_trans_probs_matrix(km):
 
 
 
-## TODO: update this to allow better transition estimates. e.g. can just make i,j matrix of all i-->j
+
 def get_state_emissions_from_kmeans(data, k):
     km = k_state_means(data, k)
     mu = get_k_mean_centers(km)
@@ -341,22 +561,92 @@ def get_state_emissions_from_kmeans(data, k):
     mean_lengths = get_k_mean_cluster_mean_lengths(km_lengths) #in order of clustnums like other2
     stay_probs, leave_probs = get_k_mean_cluster_trans_probs(mean_lengths)
     sorted_params = sorted( zip( mu, sig , init_probs, stay_probs, leave_probs) )
-    return [mu for mu,sig,I,S,L in sorted_params], [sig for mu,sig,I,S,L in sorted_params], [I for mu,sig,I,S,L in sorted_params], [S for mu,sig,I,S,L in sorted_params], [L for mu,sig,I,S,L in sorted_params]
+    ## outputs
+    e_mu = [mu for mu,sig,I,S,L in sorted_params]
+    e_sig = [sig for mu,sig,I,S,L in sorted_params]
+    inits = [I for mu,sig,I,S,L in sorted_params]
+    stay = [S for mu,sig,I,S,L in sorted_params]
+    leave = [L for mu,sig,I,S,L in sorted_params]
+    # returns
+    return e_mu, e_sig, inits, stay, leave
 
 def help_get_state_emissions_from_kmeans(data, k):
+    ## E probs (and Inits)
     e_mu, e_sig, inits, stay, leave = get_state_emissions_from_kmeans(data, k)
-    eprobs = get_emission_probs(mu=e_mu, sig=e_sig)
+    r_eprobs, np_eprobs = get_emission_probs(mu=e_mu, sig=e_sig)
+
+    ## For T probs
     rowsvec = []
     for i in range(k):
         row = [leave[i]]*k
         row[i] = stay[i]
         rowsvec += row
     rowsvecr = fltvec(rowsvec)
-    tprobs = matrixr(rowsvecr, nrow=k, byrow=True)
-    iprobs = matrixr( fltvec(inits), nrow=1 )
-    return eprobs, tprobs, iprobs
+    r_tprobs = matrixr(rowsvecr, nrow=k, byrow=True)
+    np_tprobs = np.array(rowsvec).reshape((k,k))
+     
+    ## I probs
+    np_iprobs = np.array(inits)
+    r_iprobs = matrixr( fltvec(inits), nrow=1 )
+    ## Returns
+    return r_eprobs, r_tprobs, r_iprobs, np_eprobs, np_tprobs, np_iprobs
                                  
                             
+## TODO: update above kmeans... to allow better transition estimates. e.g. can just make i,j matrix of all i-->j
+
+
+
+##DEL
+def get_transition_probs(nstates=7, special_state_idx=0, leave_special=0.001, leave_non_to_special=0.001, leave_non_to_othernon=0.001):
+    stay_special = 1 - (leave_special * (nstates-1))
+    stay_non = 1 - leave_non_to_special - (leave_non_to_othernon * (nstates-2))
+    nonspecial = range(nstates)
+    nonspecial.pop(special_state_idx)
+    np_tprobs = np.zeros([nstates,nstates], dtype=float)
+    
+    for i in range(nstates):
+        ## mark whole row as non to other non
+        np_tprobs[i,] = leave_non_to_othernon
+        ## mark cell to special
+        np_tprobs[i, special_state_idx] = leave_non_to_special
+        ## mark all diagonal as non to self
+        np_tprobs[i,i] = stay_non
+
+    ## mark entire row of special to other states as leave_special
+    np_tprobs[special_state_idx,] = leave_special
+    ## mark special-to-self
+    np_tprobs[special_state_idx, special_state_idx] = stay_special
+    ## ensure all rows sum to 1
+    for i in range(nstates):
+      np_tprobs[i,] = np_tprobs[i,]/sum(np_tprobs[i,])
+    ##convert to R
+    rowsvec = []
+    for i in range(nstates):
+        rowsvec += list(np_tprobs[i,])
+    rowsvecr = fltvec(rowsvec)
+    r_tprobs = matrixr(rowsvecr, nrow=nstates, byrow=True)
+    return r_tprobs, np_tprobs
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
