@@ -335,18 +335,54 @@ Note: No median normalization or smoothing is performed. If only late is given, 
                                                 For file with N rows, returns N-1 rows.
                                                 For each value, V[i], in 4th column, for i in 2:N, it computes Skew = 100*(V[i]-V[i-1]) / V[i-1]''')
 
+    parser_puffcn_protocol.add_argument('-12', '--protocol12', action='store_true', default=False,
+                                        help=''' Median ratio normalization. Late is normalized to early. Then those ratios are median normalized.
+                                                This is similar to a global version of what's used in DEseq2 (or TMM for EdgeR).''')
+
+    parser_puffcn_protocol.add_argument('-13', '--protocol13', action='store_true', default=False,
+                                        help=''' Median ratio normalization with pre-smoothing. Late (and early if present) is smoothed. Late is normalized to early. Then those ratios are median normalized.
+                                                This is similar to a global version of what's used in DEseq2 (or TMM for EdgeR).''')
+
+    parser_puffcn_protocol.add_argument('-14', '--protocol14', action='store_true', default=False,
+                                        help=''' Median ratio normalization with post-smoothing. Late is normalized to early. Then those ratios are smoothed. Then median normalized.
+                                                This is similar to a global version of what's used in DEseq2 (or TMM for EdgeR).''')
+
+    parser_puffcn_protocol.add_argument('-15', '--protocol15', action='store_true', default=False,
+                                        help=''' Median ratio normalization with end-smoothing. Late is normalized to early. Then those ratios are median normalized. Then smoothed.
+                                                This is similar to a global version of what's used in DEseq2 (or TMM for EdgeR).''')
+    parser_puffcn_protocol.add_argument('-16', '--protocol16', action='store_true', default=False,
+                                        help=''' Glocal Median ratio normalization. Late is normalized to early. Then those ratios are median normalized based on coverage value in late.
+                                                This is similar to a coverage-based local version of what's used in DEseq2 (or TMM for EdgeR).''')
+    
+    parser_puffcn_protocol.add_argument('-17', '--protocol17', action='store_true', default=False,
+                                        help=''' First normalizes late stage to median (X/Med), and scales it with --scalecov to make the median equal scalecov.
+                                                It does the same to early if present.
+                                                Then Late is normalized to Early (FE) using given pseudocount (not pseudocount given has same ratio to median in both samples).
+                                                It then does median ratio normalization.
+                                                It then returns it as is or logged if --log10 or --log2 specified''')
+
+
+
     parser_puffcn.add_argument('--stringcols', action='store_true', default=False,
                                help='''Just treat columns other than 4 as strings...''')
+    parser_puffcn.add_argument('--log2', action='store_true', default=False,
+                               help='''Return log2 values. Default = False.''')
+    parser_puffcn.add_argument('--log10', action='store_true', default=False,
+                               help='''Return log10 values. Default = False.''')
+    parser_puffcn.add_argument('--scalecov', type=float, default=1,
+                               help='''Multiply coverage by this as part of protocol 17.''')
     
 
 
     
     parser_puffcn.add_argument('-m', '--emodel', type=str, default='normal',
-                               help='''Specify emissions model to assume for HMM. Options: normal, exponential, poisson, geometric, gamma. Default: normal.
+                               help='''Specify emissions model to assume for HMM. Options: normal, exponential, poisson, geometric, gamma, and discrete. Default: normal.
 Note that all you ever need to do is given the expected means and standard deviations for each state from sampled data.
 The normal model will use those directly. Poisson will use the means as lambda. Exponential will use the means as B w/ rate 1/B. Geometric will also use the means as 1/mu.
 Gamma will estimate alpha and beta (shape and scale) parameters from the means and standard deviations - if you have A/B in mind, convert to mu and sigma by A*B and (A*B^2)^0.5.
-Note that the exponential is same as the gamma when shape is set to 1, making mu and sigma equal B. Thus, if you do gamma w/ muscale=1, then you should get same as exponential.''')
+Note that the exponential is same as the gamma when shape is set to 1, making mu and sigma equal B. Thus, if you do gamma w/ muscale=1, then you should get same as exponential.
+"Discrete" is when you have a finite number of categories that occur at various frequencies like the sides of a coin or dice. This expects a nState X nSymbol matrix in --mu.
+"Discrete" assumes the symbols emitted are sequential integers from 1:N where N = number states.''')
     parser_puffcn.add_argument('-p', '--path', type=str, default='viterbi',
                                help='''Specify whether to take state path defined by viterbi or posterior decoding. Options: viterbi, posterior. Default: viterbi.''')
     parser_puffcn.add_argument('-s', '--scale', action='store_true', default=False,
@@ -365,6 +401,12 @@ Default: 0.1.''')
                                help=''' If kernel smoothing, specify bandwidth (int).
 Bandwidth should be bigger when no early stage normalization to try to smooth out sequencing biases, mappability biases, etc.
 Default: 2500.''')
+    parser_puffcn.add_argument('--endsmoothing', action='store_true', default=False,
+                               help=''' Add smoothing to the absolute end of any of the protocols for more flexibility here. This comes after log-transformation steps, for example, which optionally comes at the end of any protocol.''')
+    parser_puffcn.add_argument('--replaceNaN', action='store_true', default=False,
+                               help=''' If kernel smoothing, NaNs can be generated. This option replaces those with local averages (see --localwinsize, default=5 bins). In cases where localaverages return NaN (very rare), it fills NaN with the global average for the given chrom/sequence (not whole geneome, so still local-ish).''')
+    parser_puffcn.add_argument('--localwinsize', type=int, default=5,
+                               help=''' If kernel smoothing and/or using --replaceNan, this specifies the number of bins to use (centered on this so odd numbers preferable). Default = 5.''')
     parser_puffcn.add_argument('--impute', type=int, default=False,
                                help=''' If imputing, specify bandwidth (int) for  kernel smoothing.
 This bandwidth is generally longer than the one you would provide for regular smoothing.
@@ -380,7 +422,7 @@ Levels are the means 1,2,4,8,16,32,64.
 These are obtained by 2**(state-1).''')
 
 
-    parser_puffcn.add_argument('--mu', type=str, default='1,2,4,8,16,32,64',
+    parser_puffcn.add_argument('--mu', '--discreteEmat', type=str, default='1,2,4,8,16,32,64',
                                help=''' PuffCN has been optimized for mapping DNA puffs in the fungus fly.
 The default state means were previously hard-coded.
 This option allows some flexibility from the command-line to change the state means.
@@ -391,7 +433,12 @@ If changing state sigmas (used in normal model), it must have same number of sta
 
 NOTE: If using exponential or geometric distribution, provide the expected mean RCN values of the states
     as you would for normal or poisson models. This script will automatically take their inverses to work
-    in the exponential and geometric models.''')
+    in the exponential and geometric models.
+
+NOTE2: For "--emodel discrete" can call --mu as --discreteEmat for better-readability at commandline.
+    Instead of a comma-sep list of means, provide comma-/semicolon-separated values to make up a nState X nSymbol matrix.
+    Example of a 3-state x 4 symbol matrix: "0.97,0.01,0.01,0.01;0.01,0.97,0.01,0.01;0.01,0.01,0.01,0.97".
+    That can be thought of as 3 4-sided dice.''')
 
     parser_puffcn.add_argument('--sigma', type=str, default=None,
                                help=''' PuffCN has been optimized for mapping DNA puffs in the fungus fly.
@@ -548,7 +595,43 @@ This model probably works best when you expect 2-3 states...
 This option over-rides all other parameter options (which will be ignored).
 ''')
 
+    parser_puffcn.add_argument('--iters', type=int, default=1,
+                               help='''Number of iterations to run for updating parameters. Default: 1 (no updates).
+''')
+    parser_puffcn.add_argument('--converge', type=float, default=1e-9,
+                               help='''When multiple iterations, stop iterating if difference between the log likelihood of the current state path is less than this much different than previous. Default = 1e-9.
+''')
+    parser_puffcn.add_argument('--learnpseudo', type=float, default=1e-323,
+                               help='''When learning state transitions from previous state path, zero counts can throw a wrench into the spokes.
+This prevents that. Can be 1e-323 to Inf, but recommend <= 1.
+Default pseudocount is basically the lowest non-zero number possible: 1e-323..
+''')
+    parser_puffcn.add_argument('--emitpseudo', type=float, default=1e-7,
+                               help='''Specifically for --model discrete.
+When learning emission fequencies from previous state path, zero counts can throw a wrench into the spokes.
+This prevents that. Can be 1e-323 to Inf, but recommend <= 1.
+Default pseudocount: 1e-7 (1 in 10 million).
+''')
+    parser_puffcn.add_argument('--constrainEmit', action='store_true', default=False,
+                               help='''When iterating, do not update the emission probabilities: constrain them to what was given to initialize.
+''')
+    parser_puffcn.add_argument('--outpfx', type=str, default=None,
+                               help='''Prefix for output. If not used, all output goes to stdout.
+This is particularly useful when iters > 1, which outputs the statepath from each round.
+If an out prefix is not specified and iters > 1, you will be warned/reminded in a stderr message that can be ignored if purposeful.
+''')
+
     parser_puffcn.set_defaults(func=run_subtool)
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -568,6 +651,18 @@ This option over-rides all other parameter options (which will be ignored).
                                 help='''Provide path to bedGraph (e.g. made from getcov) for a late stage sample.''')
     parser_summits.add_argument('-e','--earlystage', type=str, required=False, default=False,
                                help=''' Optional: Provide path to bedGraph (e.g. made from getcov) for an early stage sample. This is used after smoothing and median normalization to further normalize the late-stage sample (e.g. can correct for sequencing biases)''')
+
+    parser_summits.add_argument('--replace', action='store_true', default=False,
+                                        help='''Turn on "replace" functionality. By default this will replace '.' in the count column of bedGraphs with '0'.
+Use --replace_with and --replace_this to change.''')
+    parser_summits.add_argument('--replace_this', type=str, default='.',
+                                        help='''Used with --replace. Specify the character in count column to replace. Default = '.' ''')
+    parser_summits.add_argument('--replace_with', type=str, default='0',
+                                        help='''Used with --replace. Specify the character to replace the --replace_this character with.
+Must be a string that can be converted to a float. Default = '0' ''')
+
+
+
     parser_summits_protocol = parser_summits.add_mutually_exclusive_group(required=True)
     parser_summits_protocol.add_argument('-1', '--protocol1', action='store_true', default=False,
                                         help='''Late stage (and early stage if present) bin counts are median normalized.
@@ -602,7 +697,37 @@ Note: if early is not present, this is same as protocol 6.''')
 Then late stage is normalized to early stage if available. (i.e. smooth -> L/E)
 Then the HMM is run.
 Note: if early is not present, this is same as protocol 5.''')
+
+    parser_summits_protocol.add_argument('-7', '--protocol7', action='store_true', default=False,
+                                        help='''Late stage is normalized to early stage if available.
+Note: No median normalization or smoothing is performed. If only late is given, then this is just an identity/pass-through function.''')
+
+    parser_summits_protocol.add_argument('-8', '--protocol8', action='store_true', default=False,
+                                        help='''SKEW. Only accepts one file (e.g. latestage).
+                                                For file with N rows, returns N-1 rows.
+                                                For each value, V[i], in 4th column, for i in 2:N, it computes Skew = (V[i]-V[i-1]) / (V[i]+V[i-1])''')
+
+    parser_summits_protocol.add_argument('-9', '--protocol9', action='store_true', default=False,
+                                        help='''PERCENT CHANGE. Only accepts one file (e.g. latestage).
+                                                For file with N rows, returns N-1 rows.
+                                                For each value, V[i], in 4th column, for i in 2:N, it computes Skew = 100*(V[i]-V[i-1]) / V[i-1]''')
+
+    parser_summits_protocol.add_argument('-10', '--protocol10', action='store_true', default=False,
+                                        help='''SKEW CHANGE or SKEW DERIVATIVE. Only accepts one file (e.g. latestage).
+                                                For file with N rows, returns N-1 rows.
+                                                For each value, V[i], in 4th column, for i in 2:N, it computes Skew = 100*(V[i]-V[i-1]) / V[i-1]''')
+
+    parser_summits_protocol.add_argument('-11', '--protocol11', action='store_true', default=False,
+                                        help='''PERCENT CHANGE DERIVATIVE. Only accepts one file (e.g. latestage).
+                                                For file with N rows, returns N-1 rows.
+                                                For each value, V[i], in 4th column, for i in 2:N, it computes Skew = 100*(V[i]-V[i-1]) / V[i-1]''')
+
+
+    parser_summits.add_argument('--stringcols', action='store_true', default=False,
+                               help='''Just treat columns other than 4 as strings...''')
     
+
+   
     parser_summits.add_argument('-ps', '--pseudo', type=float, default=0.1,
                                help=''' Before normalizing late to early, add this pseudocount to all counts in order to avoid division by zero.
 Should be between 0 and 1.
@@ -735,11 +860,44 @@ Note: No median normalization or smoothing is performed. If only late is given, 
                                                 For file with N rows, returns N-1 rows.
                                                 For each value, V[i], in 4th column, for i in 2:N, it computes Skew = 100*(V[i]-V[i-1]) / V[i-1]''')
 
+    parser_normalize_protocol.add_argument('-12', '--protocol12', action='store_true', default=False,
+                                        help=''' Median ratio normalization. Late is normalized to early. Then those ratios are median normalized.
+                                                This is similar to a global version of what's used in DEseq2 (or TMM for EdgeR).''')
 
+    parser_normalize_protocol.add_argument('-13', '--protocol13', action='store_true', default=False,
+                                        help=''' Median ratio normalization with pre-smoothing. Late (and early if present) is smoothed. Late is normalized to early. Then those ratios are median normalized.
+                                                This is similar to a global version of what's used in DEseq2 (or TMM for EdgeR).''')
+
+    parser_normalize_protocol.add_argument('-14', '--protocol14', action='store_true', default=False,
+                                        help=''' Median ratio normalization with post-smoothing. Late is normalized to early. Then those ratios are smoothed. Then median normalized.
+                                                This is similar to a global version of what's used in DEseq2 (or TMM for EdgeR).''')
+
+    parser_normalize_protocol.add_argument('-15', '--protocol15', action='store_true', default=False,
+                                        help=''' Median ratio normalization with end-smoothing. Late is normalized to early. Then those ratios are median normalized. Then smoothed.
+                                                This is similar to a global version of what's used in DEseq2 (or TMM for EdgeR).''')
+
+    parser_normalize_protocol.add_argument('-16', '--protocol16', action='store_true', default=False,
+                                        help=''' Glocal Median ratio normalization. Late is normalized to early. Then those ratios are median normalized based on coverage value in late.
+                                                This is similar to a coverage-based local version of what's used in DEseq2 (or TMM for EdgeR).''')
+    
+
+    parser_normalize_protocol.add_argument('-17', '--protocol17', action='store_true', default=False,
+                                        help=''' First normalizes late stage to median (X/Med), and scales it with --scalecov to make the median equal scalecov.
+                                                It does the same to early if present.
+                                                Then Late is normalized to Early (FE) using given pseudocount (not pseudocount given has same ratio to median in both samples).
+                                                It then does median ratio normalization.
+                                                It then returns it as is or logged if --log10 or --log2 specified''')
 
     parser_normalize.add_argument('--stringcols', action='store_true', default=False,
                                help='''Just treat columns other than 4 as strings...''')
-    
+
+    parser_normalize.add_argument('--log2', action='store_true', default=False,
+                               help='''Return log2 values. Default = False.''')
+    parser_normalize.add_argument('--log10', action='store_true', default=False,
+                               help='''Return log10 values. Default = False.''')
+    parser_normalize.add_argument('--scalecov', type=float, default=1,
+                               help='''Multiply coverage by this as part of protocol 17.''')    
+
     parser_normalize.add_argument('-c', '--collapsed', action='store_true', default=False,
                                help='''Return collapsed variable-step bedGraph instead of expanded single-step bedGraph.
 This is often a much smaller file.''')
@@ -755,6 +913,12 @@ Default: 0.1.''')
                                help=''' If kernel smoothing, specify bandwidth (int).
 Bandwidth should be bigger when no early stage normalization to try to smooth out sequencing biases, mappability biases, etc.
 Default: 2500.''')
+    parser_normalize.add_argument('--endsmoothing', action='store_true', default=False,
+                               help=''' Add smoothing to the absolute end of any of the protocols for more flexibility here. This comes after log-transformation steps, for example, which optionally comes at the end of any protocol.''')
+    parser_normalize.add_argument('--replaceNaN', action='store_true', default=False,
+                               help=''' If kernel smoothing, NaNs can be generated. This option replaces those with local averages (see --localwinsize, default=5 bins). In cases where localaverages return NaN (very rare), it fills NaN with the global average for the given chrom/sequence (not whole geneome, so still local-ish).''')
+    parser_normalize.add_argument('--localwinsize', type=int, default=5,
+                               help=''' If kernel smoothing and/or using --replaceNan, this specifies the number of bins to use (centered on this so odd numbers preferable). Default = 5.''')
     parser_normalize.add_argument('--impute', type=int, default=False,
                                help=''' If imputing, specify bandwidth (int) for  kernel smoothing.
 This bandwidth is generally longer than the one you would provide for regular smoothing.
