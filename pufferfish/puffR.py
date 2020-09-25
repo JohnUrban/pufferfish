@@ -43,14 +43,16 @@ viterbi.puff <- function(emissions, transitions, initial, states, emitted.data, 
 ##  write.table(initial,file="del3")
 ##  write.table(num.states, file="del4")
 ##  write.table(num.emits, file="del5")
-  if (emodel == "normal"){V=viterbi.normal(emissions, transitions, initial, emitted.data, num.states, num.emits)}
-  else if (emodel == "poisson"){V=viterbi.poisson(emissions, transitions, initial, emitted.data, num.states, num.emits)}
-  ## NOTE: for following two emission_prob_means that would otherwise be used for normal or poissoin are inversed (1/mu) for exponential and geometric
-  else if (emodel == "exponential"){
+  if (emodel == "normal"){
+      V=viterbi.normal(emissions, transitions, initial, emitted.data, num.states, num.emits)
+  } else if (emodel == "poisson"){
+      V=viterbi.poisson(emissions, transitions, initial, emitted.data, num.states, num.emits)
+  } else if (emodel == "exponential"){
+      ## NOTE: emission_prob_means that would otherwise be used for normal or poissoin are inversed (1/mu) for exponential and geometric
       emissions[1,] <- 1/emissions[1,]
       V=viterbi.exponential(emissions, transitions, initial, emitted.data, num.states, num.emits)
-  }
-  else if (emodel == "geometric"){
+  } else if (emodel == "geometric"){
+      ## NOTE: emission_prob_means that would otherwise be used for normal or poissoin are inversed (1/mu) for exponential and geometric
       emissions[1,] <- 1/emissions[1,]
       V=viterbi.geometric(emissions, transitions, initial, emitted.data, num.states, num.emits)
   } else if (emodel == "gamma"){
@@ -61,6 +63,8 @@ viterbi.puff <- function(emissions, transitions, initial, states, emitted.data, 
       params[2,] <- emissions[2,]^2 / emissions[1,]
       ## Stay calm and carry on
       V=viterbi.gamma(params, transitions, initial, emitted.data, num.states, num.emits)
+  } else if (emodel == "discrete"){
+      V=viterbi.discrete(emissions, transitions, initial, emitted.data, num.states, num.emits)
   }
   
   viterbi_path <- matrix(data = rep(0, num.emits), nrow = 1)
@@ -161,6 +165,29 @@ viterbi.gamma <- function(emissions, transitions, initial, emitted.data, num.sta
     for (i in 1:num.states){
       maxstate <- which.max(selection[,i])
       Viterbi[i,j] <- dgamma(emitted.data[j], shape = emissions[1, i], scale = emissions[2, i], log = TRUE) + selection[maxstate,i]
+      pointer[j,i] <- maxstate 
+    }
+  }  
+  return(list(Viterbi=Viterbi, pointer=pointer))
+}
+
+
+##DISCRETE
+viterbi.discrete <- function(emissions, transitions, initial, emitted.data, num.states, num.emits){
+  ## "emissions" = numstates x numsymbols matrix (rows sum to 1)
+  ## rounds floats to integers
+  pointer <- matrix(rep(0, num.emits*num.states), nrow = num.emits)
+  Viterbi <- matrix(rep(0, num.states*num.emits), nrow = num.states)
+
+  ## INITIALIZE AND GO
+  Viterbi[ ,1] <- initial + log( emissions[ , emitted.data[1]] )
+  pointer[1, ] <- 1
+  f <- function(x){i <- which.max(x); y <- x[i]; return(c(i,y))}
+  for (j in 2:num.emits){
+    selection <- Viterbi[,j-1] + transitions
+    for (i in 1:num.states){
+      maxstate <- which.max(selection[,i])
+      Viterbi[i,j] <- log( emissions[ i, emitted.data[j]] ) + selection[maxstate,i]
       pointer[j,i] <- maxstate 
     }
   }  
