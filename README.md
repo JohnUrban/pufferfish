@@ -7,7 +7,7 @@ Original application:
 
 	- Copy Number segmentation 
 
-	- e.g. to identify DNA *puff* sequences *for FISH* experiments in Sciara coprophila.
+	- e.g. to identify DNA **puff** sequences **for FISH** experiments in Sciara coprophila.
 
 Other applications:
 
