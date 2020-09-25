@@ -15,6 +15,8 @@ Other applications:
 
 	- Transcript factor binding ChIP-seq/Cut-and-Run (e.g. EcR)
 
+	- Any genomic enrichment data.
+
 
 Version Info:
 ============
