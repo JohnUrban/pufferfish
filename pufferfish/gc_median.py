@@ -69,10 +69,19 @@ parser.add_argument('--endcol', '-E',
                    type=int, default=3,
                    help='''Column end coordinate found in. Default = 3''')
 
+parser.add_argument('--ndigits',
+                   type=int, default=0,
+                   help='''When rounding GC values, how many signif digits. Default is 0. Assuming --scale was 100 on the proportions output from BEDtools, this rounds to nearest int. With rich data, this can be set to 1. Higher is prob not necessary.''')
+
 parser.add_argument('--sigcoltocorrect',
                    type=int, default=False,
                    help='''Assuming gc_fe_table.txt, default is to use same column in --sigcol -- i.e. correct the signal used to get parameters. Change if necessary.
                         i.e. if want to use the params from signal in one col to correct signal in another.''')
+
+
+parser.add_argument('--header',
+                    action='store_true', default=False,
+                   help='''For the GC stats printed to stdout, include header for columns.''')
 
 parser.add_argument('--control',
                    type= str, default=False,
@@ -187,11 +196,18 @@ if args.mean:
 gc2felist = defaultdict(list)
 for i in range(0,101,1):
     gc2felist[i]
+
+## 20200604 note -- previos code block below saved in case I had an older reason to use INT
+##with open(args.table) as table:
+##    for row in table:
+##        row = row.strip().split()
+##        gc2felist[int(100.0*float(row[gccol]))].append( float(row[sigcol]) )
+
+
 with open(args.table) as table:
     for row in table:
         row = row.strip().split()
-        gc2felist[int(100.0*float(row[gccol]))].append( float(row[sigcol]) )
-
+        gc2felist[round(100.0*float(row[gccol]),args.ndigits)].append( float(row[sigcol]) )
 
 
 
@@ -240,6 +256,8 @@ if args.dist:
 ## RETURN STATS TABLE
 ## PRINTED TO STDOUT FOR NOW -- THIS WAS AT FIRST THE MAIN OUTPUT OF THIS PROGRAM
 ## OUTPUT SIGNAL STATS FOR EACH GC VALUE
+if args.header:
+    print ("\t").join(['gc', 'median', 'mean', 'std', 'mad', 'mad2', 'n', 'binsum'])
 for i in range(0,101,1):
     if len(gc2felist[i]) != 0:
         out = [i] + statdict[i]
@@ -382,6 +400,6 @@ if args.bdg or args.control or args.mad or args.zscore or args.robust_zscore or 
     if args.subtractmed:
         submedbdg.close()
     if args.subtractmean:
-        submeanbdg.close()
+        submubdg.close()
 
 ## ANOTHER WAY TO CORRECT: might be to do Signal * Overall_median/GC_median
