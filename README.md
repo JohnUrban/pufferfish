@@ -4,11 +4,15 @@ pufferfish
 HMM-based approach(es) to analyzing genomics data.
 
 Original application:
+
 	- Copy Number segmentation 
-	- e.g. to identify DNA **puff** sequences **for FISH** experiments in Sciara coprophila.
+
+	- e.g. to identify DNA *puff* sequences *for FISH* experiments in Sciara coprophila.
 
 Other applications:
+
 	- Chromatin modification ChIP-seq segmentation (e.g. H3K27me3)
+
 	- Transcript factor binding ChIP-seq/Cut-and-Run (e.g. EcR)
 
 
