@@ -15,7 +15,7 @@
 import sys, datetime
 from CovBedClass import *
 from pk2txt import bdgmsg, newmsg
-from normalize import protocol1, protocol2, protocol3, protocol4, normalize
+from normalize import *
 from pybedtools import *
 from pybedtools.featurefuncs import greater_than
 import cStringIO as StringIO
@@ -87,21 +87,22 @@ def summits(a,b):
 def run(parser, args):
 ##    
     ## TODO - just change to 1 argument: --protocol -- with options [1,2,3,4]
-    if args.protocol1:
-        protocol=1
-    elif args.protocol2:
-        protocol=2
-    elif args.protocol3:
-        protocol=3
-    elif args.protocol4:
-        protocol=4
-    elif args.protocol5:
-        protocol=5
-    elif args.protocol6:
-        protocol=6
+##    if args.protocol1:
+##        protocol=1
+##    elif args.protocol2:
+##        protocol=2
+##    elif args.protocol3:
+##        protocol=3
+##    elif args.protocol4:
+##        protocol=4
+##    elif args.protocol5:
+##        protocol=5
+##    elif args.protocol6:
+##        protocol=6
+##    
+##    late = normalize(latestage=args.latestage, protocol=protocol, earlystage=args.earlystage, pseudo=args.pseudo, bandwidth=args.bandwidth, quiet=args.quiet)
+    protocol = NormalizeProtocol(args)
     
-    late = normalize(latestage=args.latestage, protocol=protocol, earlystage=args.earlystage, pseudo=args.pseudo, bandwidth=args.bandwidth, quiet=args.quiet)
-
     if args.regions:
         # find maximums (summits) within regions given
         regions = BedTool(args.regions)
@@ -113,7 +114,7 @@ def run(parser, args):
         regions = find_candidate_regions(args.states, thresh_state=1, merge1=10e3, minwidth=50e3, merge2=40e3, max_state_thresh=2, internal=0.8)
 
     ##Covert CovBed object to BedTool object
-    a = BedTool( StringIO.StringIO( late.get_bdg(bdg=late.count, collapsed=True) ) )
+    a = BedTool( StringIO.StringIO( protocol.late.get_bdg(bdg=protocol.late.count, collapsed=True) ) )
     ans = summits(a = a, b = regions)
     print str(ans).strip()
 
