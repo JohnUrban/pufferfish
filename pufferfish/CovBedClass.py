@@ -1,6 +1,7 @@
 import os
 from collections import defaultdict
 import numpy as np
+import pandas as pd
 ##np.seterr(divide='raise', invalid='raise')
 np.seterr(divide='ignore', invalid='raise')
 ##np.seterr(divide='ignore', invalid='ignore')
@@ -16,6 +17,14 @@ from puffR import *
 puffR = stap(puffRstring, 'puffR')
 import sys, datetime
 from scipy.stats import spearmanr
+
+import pandas as pd ## 2020 - potentially begin converting to pandas code where better
+#from scipy.stats.mstats import winsorize
+
+
+
+        
+
 
 def s50(counts, stages, x=[50]):
         """
@@ -144,18 +153,33 @@ class CovBed(object):
 ##            counts.append(self.count[chrom])
 ##        self.median = float(np.median(counts))
         
-    def get_median(self):
-        if self.median is None:
+    def get_median(self, relearn=False):
+        if self.median is None or relearn:
             self._get_median()
         return self.median
 
-    def median_normalize_x(self, x):
+    def median_normalize_x(self, x, relearn=False):
         #x is np.array
-        return x/self.get_median()
+        return x/self.get_median(relearn=relearn)
 
-    def median_normalize_data(self):
+    def median_normalize_data(self, relearn=False):
+        if relearn:
+            self._get_median()
         for chrom in self.chromosomes:
             self.count[chrom] = self.median_normalize_x(self.count[chrom])
+
+    def scale_data(self, scale=1):
+        for chrom in self.chromosomes:
+            self.count[chrom] = scale*self.count[chrom]
+
+    def log2_data(self, scale=1):
+        for chrom in self.chromosomes:
+            self.count[chrom] = np.log2(self.count[chrom])
+
+    def log10_data(self, scale=1):
+        for chrom in self.chromosomes:
+            self.count[chrom] = np.log10(self.count[chrom])
+
             
     def expanded_bdg(self, bdg):
         ##bdg is just what should be in the 4th column
@@ -238,17 +262,24 @@ class CovBed(object):
     def get_count_dict(self):
         return self.count
 
-    def ksmooth_counts(self, bw=10000):
+    def ksmooth_counts(self, bw=10000, rescueNaN=False, localWindow=5):
         for chrom in self.chromosomes:
             x = self.start[chrom]
             y = self.count[chrom]
             k = ksmooth(x = fltvec(x), y = fltvec(y), bandwidth = bw)
             self.count[chrom] = np.array(k[1])
-##            sys.stderr.write(chrom+"\n")
-##            sys.stderr.write(str(x)+"\n")
-##            sys.stderr.write(str(y)+"\n")
-##            sys.stderr.write(str(np.array(k[1]))+"\n\n\n")
-####            quit()
+            ## RESCUE NANs
+            if rescueNaN:
+                # 1. Compute global mean of self.count[chrom]
+                mu = np.nanmean(self.count[chrom])
+                # 2. Calculate local means (pd and convert to np)
+                new = np.array(pd.DataFrame(self.count[chrom]).rolling(3, center=True, axis=0, min_periods=1).mean().transpose())[0]
+                # 3. Replace any NaN in new with global mean
+                new = np.where(np.isnan(new),mu,new)
+                # 4. Replace any NaN in self.count[chrom] w/ corresponding value in new
+                final = np.where(np.isnan(self.count[chrom]),new,self.count[chrom])
+                # 5. Overwrite self.count[chrom] - I know this can be done in #4,  but felt like keeping it separate.
+                self.count[chrom] = final
 
 
     def computeSkew(self):
@@ -293,7 +324,32 @@ class CovBed(object):
     def normalize_to_other(self, other, pseudocount=0.01):
         #other is another CovBed object with same bins from same genome
         for chrom in self.chromosomes:
+            #print chrom
             self.count[chrom] = (np.array(self.count[chrom])+pseudocount)/(np.array(other.count[chrom])+pseudocount)
+
+    def normalize_with_glocalMedRatioNorm(self, other=None, pseudocount=0.01, globalweight=1, minlocalbins=3, minpropdata=0.1):
+        #other is another CovBed object with same bins from same genome
+
+        covd = self.create_local_medRatioNorm_dict(other=other,
+                                              pseudocount=pseudocount)
+        #print 'globalweight', globalweight
+        covmeds = self.get_params_from_local_medRatioNorm_dict_with_glocalweighting(covd=covd,
+                                                                               globalweight=globalweight,
+                                                                               minlocalbins=minlocalbins,
+                                                                               minpropdata=minpropdata)
+        for chrom in self.chromosomes:
+            norms = np.array(map(lambda x: covmeds[x], self.count[chrom]))
+            if other is not None:
+                self.count[chrom] = (1.0/norms)*(np.array(self.count[chrom])+pseudocount)/(np.array(other.count[chrom])+pseudocount)
+            else:
+                self.count[chrom] = norms*(np.array(self.count[chrom])+pseudocount)
+        print("INDEV")
+        #print(covd)
+        #print()
+        #print(covmeds)
+        #print()
+        #return (covd, covmeds)
+
 
     def impute_zeros(self, bw):
         '''When requiring mapq to be stringent, it leaves stretches of 0 that could benefit from being imputed.
@@ -306,10 +362,120 @@ class CovBed(object):
             k = puffR.impute_zeros(x = fltvec(x), y = fltvec(y), bw = bw)
             self.count[chrom] = np.array(k)
         
+    def global_winsorize_counts(self, floor=0.00001, ceiling=0.99999):
+        '''Set anything below the value of the floor quantile to that value.
+           Set anything above the value of the ceiling quantile to that value.'''
+        counts = np.concatenate(self.count.values())
+        wange = np.quantile(counts, [floor, ceiling])
+        for chrom in self.chromosomes:
+            self.count[chrom][self.count[chrom] < wange[0]] = wange[0]
+            self.count[chrom][self.count[chrom] > wange[1]] = wange[1]
+
+    def local_winsorize_counts(self, floor=0.0001, ceiling=0.9999):
+        '''Set anything below the value of the floor quantile to that value.
+           Set anything above the value of the ceiling quantile to that value.'''
+        counts = np.concatenate(self.count.values())
+        gwange = np.quantile(counts, [floor, ceiling])
+        for chrom in self.chromosomes:
+            counts = np.array(self.counts[chrom])
+            cwange = np.quantile(counts, [floor, ceiling])
+            pass
+
+
+    def create_local_medRatioNorm_dict(self, other=None, pseudocount=0.01):
+        #other is another CovBed object with same bins from same genome
+        covd = defaultdict(list)
+        for chrom in self.chromosomes:
+            if other is not None:
+                ratios = (np.array(self.count[chrom])+pseudocount)/(np.array(other.count[chrom])+pseudocount)
+            else:
+                ratios = np.array(self.count[chrom])+pseudocount
+            for i in range(len(self.count[chrom])):
+                latecov = self.count[chrom][i]
+                ratio = ratios[i]
+                covd[latecov].append(ratio)
         
+        return covd
+
+    def get_params_from_local_medRatioNorm_dict_with_globalweighting(self, covd, globalweight=30):
+        #covd = output from create_local_medRatioNorm_dict
+        #globalweight = how many global_med values to add to a local bin
+        global_med = [np.median(np.concatenate(covd.values()))]*globalweight
+        covmeds = dict()
+        for key in sorted(covd.keys()):
+            ratios = np.concatenate([global_med,covd[key]])
+            covmeds[key] = np.median(ratios)
+        return covmeds
+
+    def get_params_from_local_medRatioNorm_dict_with_glocalweighting(self, covd, globalweight=10, minlocalbins=3, minpropdata=0.1):
+        #covd = output from create_local_medRatioNorm_dict
+        #globalweight = how many global_med values to add to a local bin
+        N = len(np.concatenate(covd.values()))
+        pN = round(minpropdata*N)
+        #print 'pN', pN
+        global_med = [np.median(np.concatenate(covd.values()))]*globalweight
+        #print 'G', global_med
+        covmeds = dict()
+        latecovs = sorted(covd.keys())
+        halfbins = int((minlocalbins+1)//2) ## halves from odds rounded up
+        n = len(latecovs)
+        for i in range(n):
+            ## FIRST SATISFY MIN BINS
+            if minlocalbins >=3:
+                l = max(0, i-halfbins)
+                r = min(i+halfbins, n-1)
+                nl = i-l
+                nr = r - i
+                if l == 0:
+                    add = minlocalbins - nl
+                    r += add
+                    if r > n-1: ## CATCH -- this shouldn't happen
+                        print "WARN: get_params_from_local_medRatioNorm_dict_with_glocalweighting #1"
+                        r = n-1
+                if r == n-1:
+                    sub = minlocalbins - nr
+                    l -= sub
+                    if l < 0: ## CATCH -- this shouldn't happen
+                        print "WARN: get_params_from_local_medRatioNorm_dict_with_glocalweighting #2"
+                        l = 0
+                bins =  [latecovs[j] for j in range(l,r)] 
+            else:
+                bins = [latecovs[i]] # [covd[j] for j in range(i,i+minlocalbins)]
+            nbins = len(bins)
+            #print "nbins post minbins", nbins
+
+            ## SECOND, SATISFY MIN PROP OF DATA
+            direction = 'R'
+            localvals = list(np.concatenate([covd[latecov] for latecov in bins]))
+            nvals = len(localvals)
+            finiteloop=n
+            while nvals < pN:
+                if direction == 'R' and r <= n-1:
+                    # use r before r change since it only went up to but did not include r before
+                    localvals.append(covd[latecovs[r]])
+                    r += 1
+                    direction = 'L'
+                    nvals = len(localvals)
+                    finiteloop=n
+                elif direction == 'L' and l > 0:
+                    # use l AFTER l change since used l already
+                    l-=1
+                    localvals.append(covd[latecovs[l]])
+                    direction = 'R'
+                    nvals = len(localvals)
+                    finiteloop=n
+                else:
+                    finiteloop-=1
+                    if finiteloop <= 0:
+                        print "WARN: get_params_from_local_medRatioNorm_dict_with_glocalweighting #3"
+                        break
 
 
-
+            ## GET GLOCAL MEDIAN RATIO
+            ratios = np.concatenate([global_med, localvals])
+            #print ratios
+            covmeds[latecovs[i]] = np.median(ratios)
+        return covmeds
 
 
 
