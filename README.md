@@ -139,3 +139,13 @@ Expected updates:
 
 Please cite pufferfish as:
 -------------------------------------------
+
+- John Urban's 2016 PhD Thesis from Brown University: 
+
+	- "The genome and DNA puff sequences of the fungus fly, Sciara coprophila, and genome-wide methods for studying DNA replication."
+
+	- https://repository.library.brown.edu/studio/item/bdr:733543/
+
+	- See Chapter 4
+
+
