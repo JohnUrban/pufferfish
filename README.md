@@ -8,13 +8,17 @@ HMM-based approach(es) to finding and analyzing developmentally regulated amplic
 
 Version Info:
 ============
-pufferfish - 0.0.0 (02/15/2016)
+- pufferfish - 0.1.20200925 (09/25/2020)
+	- Many new features and updates including new normalization protocols, discrete HMMs, Viterbi Training, new utilities, segmented motif stuff, etc.
 
-- early development was in subdir of sciaraTools.
+- pufferfish - 0.0.0b (06/01/2020)
 
-pufferfish - 0.0.0b (06/01/2020)
+	- Now its own Git Repo.
 
-- Now its own Git Repo.
+- pufferfish - 0.0.0 (02/15/2016)
+
+	- early development was in subdir of sciaraTools.
+
 
 
 
