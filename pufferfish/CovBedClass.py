@@ -77,6 +77,11 @@ class CovBed(object):
         self.median = None
         self.mean = None
         self.sd = None
+        self.mad = None
+        self.rank = None
+        self.rankstd = None
+        self.sum = None
+        self.nbins = None
         self.count_only=count_only ## When False, start/end dicts are initialized, but remain empty: useful when comparing 2 bedgraphs of identical coords. See also MultiCovBed (though that currently requires a "stage file")
         self._extract_data(replace, replace_with, replace_this)
         
@@ -148,6 +153,44 @@ class CovBed(object):
     def _get_median(self):
         counts = np.concatenate(self.count.values())
         self.median = float(np.median(counts))
+
+    def _get_mad(self, relearn=False):
+        if self.median is None or relearn:
+            self._get_median()
+        counts = np.concatenate(self.count.values())
+        absdiffs = np.abs((counts - self.get_median()))
+        self.mad = float(np.median(absdiffs))
+
+    def _get_sum(self):
+        counts = np.concatenate(self.count.values())
+        self.sum = float(np.sum(counts))
+
+    def _get_nbins(self):
+        self.nbins = len(np.concatenate(self.count.values()))
+
+    def _rank_data(self):
+        counts = np.concatenate(self.count.values())
+        ranks = np.array(pd.Series(counts).rank())
+        assert len(counts) == len(ranks)
+        self.rankdict = {counts[i]:ranks[i] for i in range(len(counts))}
+        self.rank = {}
+        for chrom in self.count.keys():
+            self.rank[chrom] = [self.rankdict[e] for e in self.count[chrom]]
+
+    def _rank_standardize_data(self):
+        counts = np.concatenate(self.count.values())
+        ranks = np.array(pd.Series(counts).rank())
+        assert len(counts) == len(ranks)
+        highest = self.get_nbins()
+        lowest = 1.0
+        M = (lowest+highest)/2.0
+        self.rankdict = {counts[i]:((ranks[i]-M)/M) for i in range(len(counts))}
+        self.rankstd = {}
+        for chrom in self.count.keys():
+            self.rankstd[chrom] = [self.rankdict[e] for e in self.count[chrom]]
+        
+
+        
 ##        counts = []
 ##        for chrom in self.chromosomes:
 ##            counts.append(self.count[chrom])
@@ -158,15 +201,58 @@ class CovBed(object):
             self._get_median()
         return self.median
 
+    def get_mad(self, relearn=False):
+        if self.mad is None or relearn:
+            self._get_mad()
+        return self.mad
+
+    def get_nbins(self):
+        if self.nbins is None:
+            self._get_nbins()
+        return self.nbins
+
     def median_normalize_x(self, x, relearn=False):
         #x is np.array
         return x/self.get_median(relearn=relearn)
+
+    def robust_z_normalize_x(self, x, relearn=False):
+        #x is np.array
+        return (x-self.get_median(relearn=relearn))/self.get_mad(relearn=relearn)
 
     def median_normalize_data(self, relearn=False):
         if relearn:
             self._get_median()
         for chrom in self.chromosomes:
             self.count[chrom] = self.median_normalize_x(self.count[chrom])
+
+    def robust_z_normalize_data(self, relearn=False):
+        if relearn:
+            self._get_median()
+            self._get_mad()
+            
+        for chrom in self.chromosomes:
+            self.count[chrom] = self.robust_z_normalize_x(self.count[chrom])
+
+    def rank_normalize_data(self, relearn=False):
+        if self.rank is None or relearn:
+            self._rank_data()
+        for chrom in self.chromosomes:
+            self.count[chrom] = self.rank[chrom]
+
+    def rank_standardize_data(self, relearn=False):
+        if self.rankstd is None or relearn:
+            self._rank_standardize_data()
+        for chrom in self.chromosomes:
+            self.count[chrom] = self.rankstd[chrom]
+
+
+    def spxr_normalize_data(self, x=1e6, relearn=False):
+        ''' '''
+        if self.sum is None or relearn:
+            self._get_sum()
+        scale_factor = float(x) / self.sum
+        self.scale_data(scale=scale_factor)
+
 
     def scale_data(self, scale=1):
         for chrom in self.chromosomes:
@@ -326,6 +412,55 @@ class CovBed(object):
         for chrom in self.chromosomes:
             #print chrom
             self.count[chrom] = (np.array(self.count[chrom])+pseudocount)/(np.array(other.count[chrom])+pseudocount)
+
+
+    def _opt_handle_zero_bins(self, other, chrom, setToControlDist=False, pseudoZeroBins=False, addMinOtherPlusOneToBoth=False):
+        t = np.array(self.count[chrom])
+        c = np.array(other.count[chrom])
+        if setToControlDist:
+            ## Assumes we are working with Z scores
+            c = other.get_mad() * c + other.get_median()
+            t = other.get_mad() * t + other.get_median()
+        if pseudoZeroBins:
+            ## slightly modify bins that have 0 in control (to avoid division)
+            g = c == 0
+            ng = c != 0
+            m = np.abs(c[ng]).min() ## /10.0
+            t[g] = t[g]+m
+            c[g] = c[g]+m
+        if addMinOtherPlusOneToBoth:
+            ## Shift entire distro up -- not meant to be used with pseudoZeroBins, but won't throw error either.
+            m = np.abs(c.min()) + 1
+            t = t + m
+            c = c + m
+        return t, c
+    
+    def pct_diff_from_other(self, other, setToControlDist=False, pseudoZeroBins=False, addMinOtherPlusOneToBoth=False):
+        #other is another CovBed object with same bins from same genome
+        #I'm not supporting pseudo counts at this point -- in favor of removing 0 bins from both samples
+        for chrom in self.chromosomes:
+            t, c = self._opt_handle_zero_bins(other, chrom, setToControlDist, pseudoZeroBins, addMinOtherPlusOneToBoth)
+            self.count[chrom] = 100.0*(t-c)/c
+
+                
+
+    def pct_skew_given_other(self, other, setToControlDist=False, pseudoZeroBins=False, addMinOtherPlusOneToBoth=False):
+        #other is another CovBed object with same bins from same genome
+        #I'm not supporting pseudo counts at this point -- in favor of removing 0 bins from both samples
+        for chrom in self.chromosomes:
+            t, c = self._opt_handle_zero_bins(other, chrom, setToControlDist, pseudoZeroBins, addMinOtherPlusOneToBoth)
+            ###self.count[chrom] = 100.0*(np.array(self.count[chrom]) - np.array(other.count[chrom]))/(np.abs(np.array(self.count[chrom])) + np.abs(np.array(other.count[chrom])))
+            self.count[chrom] = 100.0*(t - c)/(np.abs(t) + np.abs(c))
+                
+                
+                
+
+    def subtract_other(self, other, pseudocount=0.01):
+        #other is another CovBed object with same bins from same genome
+        for chrom in self.chromosomes:
+            #print chrom
+            self.count[chrom] = np.array(self.count[chrom]) - np.array(other.count[chrom])
+
 
     def normalize_with_glocalMedRatioNorm(self, other=None, pseudocount=0.01, globalweight=1, minlocalbins=3, minpropdata=0.1):
         #other is another CovBed object with same bins from same genome
