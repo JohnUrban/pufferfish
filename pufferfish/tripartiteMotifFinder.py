@@ -109,6 +109,15 @@ desc='''
 
     Make way faster.
         - store and use results for previously seen kmers instead of repeagt computations
+
+    Iterate:
+        - Take outputs, retrain, recall, etc
+
+    Weight:
+        - For training sequences, add weight that each seq should have
+        - When calling spots, treat every spot as a training seq weighted by its likelihood
+        - And/or when printing BED of coordinates, also include LHS/Mid/RHS seqs
+            - Then BED can be converted into a training table for the next round.
     
 
 '''
@@ -145,13 +154,18 @@ parser.add_argument('-adj', '--adjust',
                     It is useful for viz in IGV -- easy to understand >0 and <0.
                     ''')
 
-parser.add_argument('-s', '--bipscale',
+parser.add_argument('-c', '--bipcutoff',
                     type=str,
-                    help='''.''',
+                    help='''cutoffs can be any number or the following strings: auto, min, max, mean, median.
+                    The statistics are computed on the likelihoods of the input training set.
+                    Default: auto/min''',
                     default="auto")
-parser.add_argument('-S', '--tripscale',
+
+parser.add_argument('-C', '--tripcutoff',
                     type=str,
-                    help='''.''',
+                    help='''cutoffs can be any number or the following strings: auto, min, max, mean, median.
+                    The statistics are computed on the likelihoods of the input training set.
+                    Default: auto/min''',
                     default="auto")
 
 
@@ -160,14 +174,34 @@ parser.add_argument('-p', '--prefix',
                     help='''prefix for files. E.g. ecre_genome or output/ecre_genome''',
                     default="auto")
 
+parser.add_argument('-ps', '--pseudo',
+                    type=float,
+                    help='''Pseudocount to avoid multiplying by 0 (or log of 0). Default 1e-2. Recommend much smaller if you want to be strict.''',
+                    default=1e-2)
+
+parser.add_argument('-sh', '--startshift',
+                    type=int, default=0,
+                    help='''If analyzing a sub-sequence extracted from a larger sequence,
+                    give the 0-based start position within the longer sequence to report Wigs and BEDs accordingly.''',)
+
+parser.add_argument('-nsh', '--nameshift',
+                    action='store_true', default=False,
+                    help='''If analyzing a sub-sequence extracted from a larger sequence,
+                    this assumes the sequence has a name structure chr:start=end, and that you want to only report the "chr" component in output Wigs and BEDs.''',)
+
+
 args = parser.parse_args()
                                                                
 
 
 
 def run(args):
+    # Adjust args as needed
+    args.bipcutoff = float(args.bipcutoff) if args.bipcutoff not in ('auto', 'min', 'max', 'mean', 'median') else args.bipcutoff
+    args.tripcutoff = float(args.tripcutoff) if args.tripcutoff not in ('auto', 'min', 'max', 'mean', 'median') else args.tripcutoff
+    
     # Train
-    model = tripartiteProfileModel('/Users/johnurban/Documents/data/sciara/EcRE/Table1-ver5-April16-MikeF-or-Yutaka-EcRE-analysis.transcribed.txt')
+    model = tripartiteProfileModel('/Users/johnurban/Documents/data/sciara/EcRE/Table1-ver5-April16-MikeF-or-Yutaka-EcRE-analysis.transcribed.txt', pseudo=args.pseudo)
     model.train.to_csv(args.prefix + '.training-results.txt', sep="\t", index=False)
     
     # Open output files
@@ -175,30 +209,55 @@ def run(args):
     rhswig = open(args.prefix + '.rhs_likelihood.wig', 'w')
     bipwig = open(args.prefix + '.bipartite_likelihood.wig', 'w')
     tripwig = open(args.prefix + '.tripartite_likelihood.wig', 'w')
-    bipbed = open(args.prefix + '.bipartite.bed', 'w')
-    tripbed = open(args.prefix + '.tripartite.bed', 'w')
+    bipbed = open(args.prefix + '.bipartite.bedGraph', 'w')
+    tripbed = open(args.prefix + '.tripartite.bedGraph', 'w')
     
     # Iter through seqs
     for fa in SeqIO.parse(args.fasta, 'fasta'):
+        if args.nameshift:
+            fa.id = str(fa.id).split(":")[0]
+            
         if args.revcomp:
-            seq = triPartiteSequenceSearch(str(fa.seq.reverse_complement()), str(fa.id), model)
+            seq = triPartiteSequenceSearch(sequence = str(fa.seq.reverse_complement()).upper(),
+                                           name = str(fa.id),
+                                           model = model,
+                                           bipcutoff = args.bipcutoff,
+                                           tripcutoff = args.tripcutoff)
         else:
-            seq = triPartiteSequenceSearch(str(fa.seq), str(fa.id), model)
+            seq = triPartiteSequenceSearch(sequence = str(fa.seq).upper(),
+                                           name = str(fa.id),
+                                           model = model,
+                                           bipcutoff = args.bipcutoff,
+                                           tripcutoff = args.tripcutoff)
 
         seq.to_stderr("Writing LHS likelihood wig.")
-        lhswig.write( seq.lhs_wig(reverse=args.revcomp) + '\n' )
+        lhswig.write( seq.lhs_wig(reverse=args.revcomp,
+                                  start=args.startshift+1) + '\n' )
+
         seq.to_stderr("Writing RHS likelihood wig.")
-        rhswig.write( seq.rhs_wig(reverse=args.revcomp) + '\n' )
+        rhswig.write( seq.rhs_wig(reverse=args.revcomp,
+                                  start=args.startshift+1) + '\n' )
+
         seq.to_stderr("Writing bipartite likelihood wig.")
         bipwig.write( seq.bipartite_wig(adjust=args.adjust,
-                                        reverse=args.revcomp) + '\n' )
+                                        reverse=args.revcomp,
+                                        start=args.startshift+1) + '\n' )
+
         seq.to_stderr("Writing tripartite likelihood wig.")
         tripwig.write( seq.tripartite_wig(adjust=args.adjust,
-                                          reverse=args.revcomp) + '\n' )
-        seq.to_stderr("Writing bipartite BED.")
-        bipbed.write( seq.bipartite_bed(reverse=args.revcomp) + '\n' )
-        seq.to_stderr("Writing tripartite BED.")
-        tripbed.write( seq.tripartite_bed(reverse=args.revcomp) + '\n' )
+                                          reverse=args.revcomp,
+                                          start=args.startshift+1) + '\n' )
+
+        seq.to_stderr("Writing bipartite BEDGRAPH.")
+        bipbed.write( seq.bipartite_bedgraph(adjust=args.adjust,
+                                        reverse=args.revcomp,
+                                        start=args.startshift) + '\n' )
+
+        seq.to_stderr("Writing tripartite BEDGRAPH.")
+        tripbed.write( seq.tripartite_bedgraph(adjust=args.adjust,
+                                        reverse=args.revcomp,
+                                        start=args.startshift) + '\n' )
+
         seq.to_stderr("Done!")
         
     # Close files
