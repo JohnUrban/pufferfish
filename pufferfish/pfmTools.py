@@ -506,8 +506,8 @@ class tripartiteProfileModel(object):
         self.mid_seq_mean_len = self.train['mid_seq_len'].mean()
         self.mid_seq_min_len = self.train['mid_seq_len'].min()
         self.mid_seq_max_len = self.train['mid_seq_len'].max()
-        self.min_motif_len = self.lhs_len + self.mid_seq_min_len + self.lhs_len
-        self.max_motif_len = self.lhs_len + self.mid_seq_max_len + self.lhs_len
+        self.min_motif_len = self.lhs_len + self.mid_seq_min_len + self.rhs_len
+        self.max_motif_len = self.lhs_len + self.mid_seq_max_len + self.rhs_len
         
         self.mid_seq_length_probs = np.zeros(self.train['mid_seq_len'].max()+1) + pseudo
         for l in self.train['mid_seq_len']:
@@ -563,6 +563,7 @@ class tripartiteProfileModel(object):
 class triPartiteSequenceSearch(object):
     ''' To search the Reverse Complement Strand, simply provide it as the sequence, and use the reverse option for writing Wigs and Beds.'''
     def __init__(self, sequence, name, model, bipcutoff='auto', tripcutoff='auto', verbose=True):
+        ''' cutoffs can be any number or the following strings: auto, min, max, mean, median. '''
         ## VARS
         self.sequence = sequence
         self.name = name
@@ -591,8 +592,28 @@ class triPartiteSequenceSearch(object):
         self.__stderr("Computing RHS likelihoods.")
         self.__rhs_likelihood()
         self.__stderr("Computing Bipartite/Tripartite likelihoods.")
-        self.bipcutoff = self.model.train['bipartite_prob'].min() if bipcutoff == 'auto' else bipcutoff
-        self.tripcutoff = self.model.train['tripartite_prob'].min() if tripcutoff == 'auto' else tripcutoff
+        # Get cutoffs
+        self.bipcutoff = bipcutoff
+        self.tripcutoff = tripcutoff
+        if bipcutoff in ('auto', 'min', 'max', 'mean', 'median'):
+            if bipcutoff in ('auto', 'min'):
+                self.bipcutoff = self.model.train['bipartite_prob'].min()
+            elif bipcutoff == 'max':
+                self.bipcutoff = self.model.train['bipartite_prob'].max()
+            elif bipcutoff == 'mean':
+                self.bipcutoff = self.model.train['bipartite_prob'].mean()
+            elif bipcutoff == 'median':
+                self.bipcutoff = np.median(self.model.train['bipartite_prob'])
+        if tripcutoff in ('auto', 'min', 'max', 'mean', 'median'):
+            if tripcutoff in ('auto', 'min'):
+                self.tripcutoff = self.model.train['tripartite_prob'].min()
+            elif tripcutoff == 'max':
+                self.tripcutoff = self.model.train['tripartite_prob'].max()
+            elif tripcutoff == 'mean':
+                self.tripcutoff = self.model.train['tripartite_prob'].mean()
+            elif tripcutoff == 'median':
+                self.tripcutoff = np.median(self.model.train['tripartite_prob'])
+
         self.__bi_and_tripartite_likelihoods(self.bipcutoff, self.tripcutoff)
     def __stderr(self, msg):
         if self.verbose:
@@ -672,6 +693,7 @@ class triPartiteSequenceSearch(object):
                     rhs = cand_rhs
                     bip = lhs + rhs
                     biplen = cand_rhs_pos + self.model.rhs_len - i
+
                 ## also calculate tripartite likelihood
                 ## GET MID PROB
                 ## Define Middle sequence
@@ -750,40 +772,45 @@ class triPartiteSequenceSearch(object):
     def wig_header(self, start=1):             
         return 'fixedStep chrom=' + self.name + ' start=' + str(start) + ' step=1\n'
 
-    def lhs_wig(self, reverse=False):
+    def lhs_wig(self, reverse=False, start=1):
         if reverse:
-            return self.wig_header(start=self.model.lhs_len) + '\n'.join([str(e) for e in np.flip(self.lhs_likelihood)])              
+            return self.wig_header(start=start + self.model.lhs_len - 1) + '\n'.join([str(e) for e in np.flip(self.lhs_likelihood)])              
         else:
-            return self.wig_header(start=1) + '\n'.join([str(e) for e in self.lhs_likelihood])
+            return self.wig_header(start=start) + '\n'.join([str(e) for e in self.lhs_likelihood])
     
-    def rhs_wig(self, reverse=False):
+    def rhs_wig(self, reverse=False, start=1):
         if reverse:
-            return self.wig_header(start=self.model.rhs_len) + '\n'.join([str(e) for e in np.flip(self.rhs_likelihood)])
+            return self.wig_header(start=start + self.model.rhs_len - 1) + '\n'.join([str(e) for e in np.flip(self.rhs_likelihood)])
         else:
-            return self.wig_header() + '\n'.join([str(e) for e in self.rhs_likelihood])
-    def bipartite_wig(self, adjust=True, reverse=False):
+            return self.wig_header(start=start) + '\n'.join([str(e) for e in self.rhs_likelihood])
+
+    def bipartite_wig(self, adjust=True, reverse=False, start=1):
         add = abs(self.bipcutoff) if adjust else 0
         if reverse:
-            return self.wig_header(start=self.model.max_motif_len) + '\n'.join([str(e) for e in np.flip(self.bip_likelihood + add)])
+            return self.wig_header(start=start + self.model.max_motif_len - 1) + '\n'.join([str(e) for e in np.flip(self.bip_likelihood + add)])
         else:
-            return self.wig_header() + '\n'.join([str(e) for e in self.bip_likelihood + add])
-    def tripartite_wig(self, adjust=True, reverse=False):
+            return self.wig_header(start=start) + '\n'.join([str(e) for e in self.bip_likelihood + add])
+
+    def tripartite_wig(self, adjust=True, reverse=False, start=1):
         add = abs(self.tripcutoff) if adjust else 0
         if reverse:
-            return self.wig_header(start=self.model.max_motif_len) + '\n'.join([str(e) for e in np.flip(self.trip_likelihood + add)])
+            return self.wig_header(start=start + self.model.max_motif_len - 1) + '\n'.join([str(e) for e in np.flip(self.trip_likelihood + add)])
         else:
-            return self.wig_header() + '\n'.join([str(e) for e in self.trip_likelihood + add])
+            return self.wig_header(start=start) + '\n'.join([str(e) for e in self.trip_likelihood + add])
         #return self.wig_header() + '\n'.join([str(e) for e in 10**self.trip_likelihood])
-    def bipartite_bed(self, reverse=False):
+
+    def bipartite_bedgraph(self, adjust=True, reverse=False, start=0):
 ##        str(self.seqlen - self.bipcalls[i][1] + 1),
 ##         str(self.seqlen - self.bipcalls[i][0] + 1)
+        add = abs(self.bipcutoff) if adjust else 0
+        
         if reverse:
             return ('\n').join([
                 '\t'.join([
                     self.name,
-                    str(self.seqlen - self.bipcalls[i][0] + 1),
-                    str(self.seqlen - self.bipcalls[i][0] + 1 + self.bipcalls[i][1]-self.bipcalls[i][0]),
-                    str(np.flip(self.bip_likelihood)[ self.seqlen -self.model.max_motif_len - self.bipcalls[i][0]  ])
+                    str(start + self.seqlen - self.bipcalls[i][0] + 1),
+                    str(start + self.seqlen - self.bipcalls[i][0] + 1 + self.bipcalls[i][1]-self.bipcalls[i][0]),
+                    str(np.flip(self.bip_likelihood)[ self.seqlen -self.model.max_motif_len - self.bipcalls[i][0]  ]  + add )
                     ]) 
                 for i in range(len(self.bipcalls))
                 ]) 
@@ -791,20 +818,22 @@ class triPartiteSequenceSearch(object):
             return ('\n').join([
                 '\t'.join([
                     self.name,
-                    str(self.bipcalls[i][0]),
-                    str(self.bipcalls[i][1]),
-                    str(self.bip_likelihood[ self.bipcalls[i][0] ])
+                    str(start + self.bipcalls[i][0]),
+                    str(start + self.bipcalls[i][1]),
+                    str(self.bip_likelihood[ self.bipcalls[i][0] ] + add)
                     ])
                 for i in range(len(self.bipcalls))
                 ]) 
-    def tripartite_bed(self, reverse=False):
+
+    def tripartite_bedgraph(self, adjust=True, reverse=False, start = 0):
+        add = abs(self.tripcutoff) if adjust else 0
         if reverse:
             return ('\n').join([
                 '\t'.join([
                     self.name,
-                    str(self.seqlen - self.tripcalls[i][0] + 1),
-                    str(self.seqlen - self.tripcalls[i][0] + 1 + self.tripcalls[i][1]-self.tripcalls[i][0]),
-                    str(np.flip(self.trip_likelihood)[ self.seqlen -self.model.max_motif_len - self.tripcalls[i][0]  ])
+                    str(start + self.seqlen - self.tripcalls[i][0] + 1),
+                    str(start + self.seqlen - self.tripcalls[i][0] + 1 + self.tripcalls[i][1]-self.tripcalls[i][0]),
+                    str(np.flip(self.trip_likelihood)[ self.seqlen -self.model.max_motif_len - self.tripcalls[i][0]  ]  + add)
                     ]) 
                     
                 for i in range(len(self.tripcalls))
@@ -813,9 +842,9 @@ class triPartiteSequenceSearch(object):
             return ('\n').join([
                 '\t'.join([
                     self.name,
-                    str(self.tripcalls[i][0]),
-                    str(self.tripcalls[i][1]),
-                    str(self.trip_likelihood[ self.tripcalls[i][0] ])
+                    str(start + self.tripcalls[i][0]),
+                    str(start + self.tripcalls[i][1]),
+                    str(self.trip_likelihood[ self.tripcalls[i][0] ]  + add)
                     ])
                 for i in range(len(self.tripcalls))
                 ]) 
