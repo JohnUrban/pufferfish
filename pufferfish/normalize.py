@@ -62,6 +62,42 @@ class NormalizeProtocol(object):
         elif self.args.protocol17:
             self.protocol = 17
             self._run_protocol = self._protocol17
+        elif self.args.protocol18:
+            self.protocol = 18
+            self._run_protocol = self._protocol18
+        elif self.args.protocol19:
+            self.protocol = 19
+            self._run_protocol = self._protocol19
+        elif self.args.protocol20:
+            self.protocol = 20
+            self._run_protocol = self._protocol20
+        elif self.args.protocol21:
+            self.protocol = 21
+            self._run_protocol = self._protocol21
+        elif self.args.protocol22:
+            self.protocol = 22
+            self._run_protocol = self._protocol22
+        elif self.args.protocol23:
+            self.protocol = 23
+            self._run_protocol = self._protocol23
+        elif self.args.protocol24:
+            self.protocol = 24
+            self._run_protocol = self._protocol24
+        elif self.args.protocol25:
+            self.protocol = 25
+            self._run_protocol = self._protocol25
+        elif self.args.protocol26:
+            self.protocol = 26
+            self._run_protocol = self._protocol26
+        elif self.args.protocol27:
+            self.protocol = 27
+            self._run_protocol = self._protocol27
+        elif self.args.protocol28:
+            self.protocol = 28
+            self._run_protocol = self._protocol28
+        elif self.args.protocol29:
+            self.protocol = 29
+            self._run_protocol = self._protocol29
             
     def _protocol1(self):
         self.late.median_normalize_data()
@@ -214,15 +250,145 @@ class NormalizeProtocol(object):
 
 
     def _protocol18(self):
-        ## Similar to 17, but only adds pseudo to bins with 0....
-        ##
-        ## First median normalizes both samples
-        ## Then scales to a target median bin cov -- default 1000.
-        ## Then adds pseudocount - default 1. (so default pseudo is 0.1% median, 1000-fold less than median)
-        ## Then normalizes late to early
-        ## Then median ratio normalizes a la DEseq/EdgeR
-        pass
+        ## Robust Z scores
+        if self.early:
+            self.late.normalize_to_other(self.early,
+                                              self.args.pseudo)
+        self.late.robust_z_normalize_data()
 
+    def _protocol19(self):
+        ## Rank scores
+        if self.early:
+            self.late.normalize_to_other(self.early,
+                                              self.args.pseudo)
+        self.late.rank_normalize_data()
+
+    def _protocol20(self):
+        ## Robust Z score difference
+        if not self.early:
+            sys.stderr.write("This requires late (test) and early (control) files, not just late (test).....\n")
+            quit()
+        self.late.robust_z_normalize_data()
+        self.early.robust_z_normalize_data()
+        self.late.subtract_other(self.early)
+
+    def _protocol21(self):
+        ## Rank difference
+        if not self.early:
+            sys.stderr.write("This requires late (test) and early (control) files, not just late (test).....\n")
+            quit()
+        self.late.rank_normalize_data()
+        self.early.rank_normalize_data()
+        self.late.subtract_other(self.early)
+
+    def _protocol22(self):
+        ## SPMR - all counts are summed up, all bins divided by sum and multipled by 1e6 (default)
+        self.late.spxr_normalize_data(x=self.args.SPXR)
+        if self.early:
+            self.early.spxr_normalize_data(x=self.args.SPXR)
+            self.late.normalize_to_other(self.early,
+                                              self.args.pseudo)
+    def _protocol23(self):
+        ## Std Rank: Rank scores, subtract theoretical middle rank (min+max)/2, fold-normalize by middle rank
+        if self.early:
+            self.late.normalize_to_other(self.early,
+                                              self.args.pseudo)
+        self.late.rank_standardize_data()
+
+    def _protocol24(self):
+        ## pct difference: (Z_t-Z_c)/abs(Z_c)
+        ## t < c; both neg
+        ## (-1 - -0.5)/(-0.5) = -0.5/-0.5 = 1
+        ## (-1 - -0.5)/abs(-0.5) = -0.5/0.5 = -1
+        ## t > c; both neg
+        ## (-0.5 - -1) /(-1) = 0.5/-1 = -1.5
+        ## (-0.5 - -1) /abs(-1) = 0.5/1 = 0.5
+        if not self.early:
+            sys.stderr.write("This requires late (test) and early (control) files, not just late (test).....\n")
+            quit()
+        self.late.pct_diff_from_other(self.early, setToControlDist=self.args.setToControlDist, pseudoZeroBins=self.args.pseudoZeroBins, addMinOtherPlusOneToBoth=self.args.addMinOtherPlusOneToBoth)
+
+    def _protocol25(self):
+        ## pct skew: (Z_t - Z_c)/(abs(Z_t) + abs(Z_c))
+        ## t < c; both neg
+        ## (-1 - -0.5)/(-1 + -0.5) = -0.5/-1.5 = 0.333
+        ## (-1 - -0.5)/abs(-1 + -0.5) = -0.5/1.5 = -0.333
+        ## (-1 - -0.5)/(abs(-1) + abs(-0.5)) = -0.5/1.5 = -0.333
+        ## t > c; both neg
+        ## (-0.5 - -1) /(-0.5 + -1) = 0.5/-1.5 = -0.333
+        ## (-0.5 - -1) /abs(-0.5 + -1) = 0.5/1.5 = 0.333
+        ## (-0.5 - -1) /(abs(-0.5) + abs(-1)) = 0.5/1.5 = 0.333
+        ##
+        ## t < c; pos and neg
+        ## (-1 - 0.5)/(-1 + 0.5) = -1.5/-0.5 = 3
+        ## (-1 - 0.5)/abs(-1 + 0.5) = -1.5/0.5 = -3
+        ## (-1 - 0.5)/(abs(-1) + abs(0.5)) = -1.5/1.5 = -1
+        ## t > c; pos and neg
+        ## (0.5 - -1) /(0.5 + -1) = 1.5/-0.5 = -0.333
+        ## (0.5 - -1) /abs(0.5 + -1) = 1.5/0.5 = 0.333
+        ## (0.5 - -1) /(abs(0.5) + abs(-1)) = 1.5/1.5 = 1
+        ##
+        ## t < c; both pos
+        ## (0.5 - 1)/(0.5 + 1) = -0.5/1.5 = -0.333
+        ## (0.5 - 1)/abs(0.5 + 1) = -0.5/1.5 = -0.333
+        ## (0.5 - 1)/(abs(0.5) + abs(1)) = -0.5/1.5 = -0.333
+        ## t > c; both pos
+        ## (1 - 0.5) /(1 + 0.5) = 0.5/1.5 = 0.333
+        ## (1 - 0.5) /abs(1 + 0.5) = 0.5/1.5 = 0.333
+        ## (1 - 0.5) /(abs(1) + abs(0.5)) = 0.5/1.5 = 0.333
+        ##
+        ## inputs should really just be positive.
+        ## However, the "most correct" way when anticipating pos and neg is to sum the abs vals of each.
+        
+        if not self.early:
+            sys.stderr.write("This requires late (test) and early (control) files, not just late (test).....\n")
+            quit()
+        self.late.pct_skew_given_other(self.early, setToControlDist=self.args.setToControlDist, pseudoZeroBins=self.args.pseudoZeroBins, addMinOtherPlusOneToBoth=self.args.addMinOtherPlusOneToBoth)
+
+
+
+
+
+    def _protocol26(self):
+        ## Robust Z score pct difference: (Z_t-Z_c)/abs(Z_c)
+        if not self.early:
+            sys.stderr.write("This requires late (test) and early (control) files, not just late (test).....\n")
+            quit()
+        self.late.robust_z_normalize_data()
+        self.early.robust_z_normalize_data()
+        self.late.pct_diff_from_other(self.early, setToControlDist=self.args.setToControlDist, pseudoZeroBins=self.args.pseudoZeroBins, addMinOtherPlusOneToBoth=self.args.addMinOtherPlusOneToBoth)
+
+    def _protocol27(self):
+        ## Robust Z score pct skew: (Z_t - Z_c)/(abs(Z_t) + abs(Z_c))
+        if not self.early:
+            sys.stderr.write("This requires late (test) and early (control) files, not just late (test).....\n")
+            quit()
+        self.late.robust_z_normalize_data()
+        self.early.robust_z_normalize_data()
+        self.late.pct_skew_given_other(self.early, setToControlDist=self.args.setToControlDist, pseudoZeroBins=self.args.pseudoZeroBins, addMinOtherPlusOneToBoth=self.args.addMinOtherPlusOneToBoth)
+
+
+
+    def _protocol28(self):
+        ## Rank pct difference: (Z_t-Z_c)/abs(Z_c)
+        if not self.early:
+            sys.stderr.write("This requires late (test) and early (control) files, not just late (test).....\n")
+            quit()
+        self.late.rank_normalize_data()
+        self.early.rank_normalize_data()
+        self.late.pct_diff_from_other(self.early)
+
+    def _protocol29(self):
+        ## Rank pct skew: (Z_t - Z_c)/(abs(Z_t) + abs(Z_c))
+        if not self.early:
+            sys.stderr.write("This requires late (test) and early (control) files, not just late (test).....\n")
+            quit()
+        self.late.rank_normalize_data()
+        self.early.rank_normalize_data()
+        self.late.pct_skew_given_other(self.early)
+
+
+        
         
     def _normalize(self):
         if not self.args.quiet:
