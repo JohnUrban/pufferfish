@@ -98,6 +98,10 @@ class NormalizeProtocol(object):
         elif self.args.protocol29:
             self.protocol = 29
             self._run_protocol = self._protocol29
+        elif self.args.protocol30:
+            self.protocol = 30
+            self._run_protocol = self._protocol30
+
             
     def _protocol1(self):
         self.late.median_normalize_data()
@@ -387,7 +391,13 @@ class NormalizeProtocol(object):
         self.early.rank_normalize_data()
         self.late.pct_skew_given_other(self.early)
 
-
+    def _protocol30(self):
+        # median ratio norm for local windows - e.g. similar to DEseq (or TMM in EdgeR) -- PHYSICALLY-LOCAL version
+        # if no "early" sample present, then this just returns phys-local median norm late 
+        if self.early:
+            self.late.normalize_to_other(self.early,
+                                         self.args.pseudo)
+        self.late.local_median_normalize_data(halfwidth=self.args.halfwidth)
         
         
     def _normalize(self):

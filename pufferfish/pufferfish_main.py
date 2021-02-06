@@ -954,6 +954,15 @@ When an early (control) sample is provided, you may also want to check the defau
     parser_normalize_protocol.add_argument('-29', '--protocol29', action='store_true', default=False,
                                         help='''Pct skew given late (test) and early (control) samples, after both test and control samples are transformed into Ranks: 100*(R_t-R_c)/(abs(R_t)+abs(R_c)).''')
 
+    parser_normalize_protocol.add_argument('-30', '--protocol30', action='store_true', default=False,
+                                        help='''Median ratio normalization. Late is normalized to early. Then those ratios are locally median normalized -- phycally local in the genome, with window size controlled by --halfwidth (default 10 bins to each side).
+                                                This is similar to a what's used in DEseq2 (or TMM for EdgeR) -- on local genomic regions.
+                                                A motivation to do this is to allow for non-linear corrections of ChIP vs control over a range of copy numbers, as is seen in intrachromosomal DNA amplification for example.
+                                                The alternative is to use the global median ratio for everything, which assumes no distortion of ratios at different copy numbers.
+                                                Note that if the experiment is to map relative copy numbers compared to a control DNA sample, the GLOBAL approach is what you would want to use.
+                                                The local approach would make everything look like RCN=1 in that scenario.
+                                                The local approach is aimed at eliminating effects on the ratios due to local biases such as copy number in order to leave only peaks due to ChIP, for example.''')
+
 
     parser_normalize.add_argument('--stringcols', action='store_true', default=False,
                                help='''Just treat columns other than 4 as strings...''')
@@ -965,7 +974,15 @@ When an early (control) sample is provided, you may also want to check the defau
     parser_normalize.add_argument('--scalecov', type=float, default=1,
                                help='''Multiply coverage by this as part of protocol 17.''')    
     parser_normalize.add_argument('--SPXR', type=float, default=1e6,
-                               help='''In essence, this is like --scalecov with a different default: 1e6.''')    
+                               help='''In essence, this is like --scalecov with a different default: 1e6.''')
+
+    parser_normalize.add_argument('--halfwidth', type=int, default=10,
+                               help='''In local operations (only protocol30, local med ratios atm), this is how many bins on each side of a central position is used to calculate a statistic.
+                                        The total window size would therefore be:
+                                            window = LHS + position + RHS = halfwidth + 1 + halfwidth = halfwidth*2 + 1.
+                                        Default = 10.
+                                        Note that the default has different spans depending on the input bin size.
+                                        If using 500 bp bins, then 10 bins to each side equals 5 kb to each side (10.5 kb window), but just 1 kb (2.1 kb window) if using 100 bp bins.''') 
 
     parser_normalize.add_argument('--pseudoZeroBins', action='store_true', default=False,
                                help='''Not to be confused with --pseudo. This option applies only to protocols 24-27 right now. It only need be used when there are zeros in the control (early) sample. In protocols 26 and 27, this is likely to happen from the robust z-score pre-processing. If an error is thrown, try --pseudoZeroBins or --addMinOtherPlusOneToBoth. --pseudoZeroBins adds min(abs(nonzero control values)) to bins in both samples that were 0 in contorl (early). --addMinOtherPlusOneToBoth shifts both distributions up by min(control values)+1, setting the min control value to 1. Both use minimum values for each chrom/contig independently rather than a global min. This is intended to reduce the effects of the modifications, but may introduce its own issues. These are not meant to be used together, but won't throw an error if they are.''')    
