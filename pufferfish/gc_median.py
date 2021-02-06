@@ -43,11 +43,11 @@ parser.add_argument('--table', '-i', '-f',
 
 parser.add_argument('--sigcol',
                    type=int, default=7,
-                   help='''Assuming gc_fe_table.txt, default is 7. Change if necessary.''')
+                   help='''Assuming gc_fe_table.txt, default is 7. Also common is 5. Change if necessary. ''')
 
 parser.add_argument('--gccol', 
                    type=int, default=4,
-                   help='''Assuming gc_fe_table.txt, default is 7. Change if necessary.''')
+                   help='''Assuming gc_fe_table.txt, default is 4. Change if necessary.''')
 
 parser.add_argument('--scale', 
                    type=float, default=100,
@@ -225,6 +225,8 @@ for i in range(0,101,1):
         median = np.median(gc2felist[i])
         mean =  np.mean(gc2felist[i])
         binsum = np.sum(gc2felist[i])
+        bottom = np.min(gc2felist[i])
+        top = np.max(gc2felist[i])
         if n == 1: ## stdev will be NAN and MAD will be 0 
             ## This is just a band-aid for now
             ## Moreover, it is not guaranteed to work 
@@ -242,7 +244,7 @@ for i in range(0,101,1):
             mad = np.median( np.absolute(gc2felist[i] - median) ) ## median absolute deviation from median
             mad2 = np.mean( np.absolute(gc2felist[i] - median) ) ## mean absolute deviation from median
 
-        statdict[i] += [median, mean, std, mad, mad2, n, binsum]
+        statdict[i] += [median, mean, std, mad, mad2, n, binsum, bottom, top]
         if args.dist:
             out = [str(i), (',').join([str(e) for e in gc2felist[i]])]
             outmsg = ('\t').join(out)
@@ -257,7 +259,7 @@ if args.dist:
 ## PRINTED TO STDOUT FOR NOW -- THIS WAS AT FIRST THE MAIN OUTPUT OF THIS PROGRAM
 ## OUTPUT SIGNAL STATS FOR EACH GC VALUE
 if args.header:
-    print ("\t").join(['gc', 'median', 'mean', 'std', 'mad', 'mad2', 'n', 'binsum'])
+    print ("\t").join(['gc', 'median', 'mean', 'std', 'mad', 'mad2', 'n', 'binsum', 'min', 'max'])
 for i in range(0,101,1):
     if len(gc2felist[i]) != 0:
         out = [i] + statdict[i]
@@ -295,7 +297,7 @@ if args.bdg or args.control or args.mad or args.zscore or args.robust_zscore or 
     with open(args.table) as table:
         for row in table:
             row = row.strip().split()
-            gc = int(100.0*float(row[gccol]))
+            gc = int(round(100.0*float(row[gccol])))
             if args.bdg:
                 sig = float(row[sigcoltocorrect])
                 newsig = sig - statdict[gc][gcsub]
