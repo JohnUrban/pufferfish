@@ -361,6 +361,25 @@ Note: No median normalization or smoothing is performed. If only late is given, 
                                                 It then does median ratio normalization.
                                                 It then returns it as is or logged if --log10 or --log2 specified''')
 
+    parser_puffcn_protocol.add_argument('-18', '--protocol18', action='store_true', default=False,
+                                        help='''Robust Z scores. If early (control) sample given, first is control norm (late/early, test/control) followed by robust Z. The fold-change calculation is not treated specially as it might be with other options. However, the robust Z should be the same or similar even if the t/c was not then median ratio normalized, for example, since that is just a scaling factor.''')
+
+    parser_puffcn_protocol.add_argument('-19', '--protocol19', action='store_true', default=False,
+                                        help='''Rank scores. If early (control) sample given, first is control norm (late/early, test/control) followed by ranking. The fold-change calculation is not treated specially as it might be with other options. However, the rank should be the same or similar even if the t/c was not then median ratio normalized, for example, since that is just a scaling factor.''')
+
+    parser_puffcn_protocol.add_argument('-20', '--protocol20', action='store_true', default=False,
+                                        help='''Robust Z score differences between two samples. Requires both late (test) and early (control) samples. Robust Z scores are calculated independently for each sample. Then R_control is subtracted from R_test = R_t - R_c.''')
+
+    parser_puffcn_protocol.add_argument('-21', '--protocol21', action='store_true', default=False,
+                                        help='''Rank score differences between two samples. Requires both late (test) and early (control) samples. Rank scores are calculated independently for each sample. Then R_control is subtracted from R_test = R_t - R_c.''')
+
+    parser_puffcn_protocol.add_argument('-22', '--protocol22', action='store_true', default=False,
+                                        help='''Signal Per Million Reads (Or Counts or Per Million whatever can be summed up in the 4th column). Bin_spmr = 1e6*Bin/Sum(Bins).
+Use --SPXR to change scaling factor from 1e6 to X. If early (control) given, both are SPMR'd independently, then late/early (test/control).
+When an early (control) sample is provided, you may also want to check the default pseudocount applied.''')
+
+    parser_puffcn_protocol.add_argument('-23', '--protocol23', action='store_true', default=False,
+                                        help='''Rank standardize scores. First rank, then subtract and divide by middle: (r-M)/M, where r is a bins rank, and M is the theoretical middle rank: M=(min+max)/2. If early (control) sample given, first is control norm (late/early, test/control) followed by ranking. The fold-change calculation is not treated specially as it might be with other options. However, the rank should be the same or similar even if the t/c was not then median ratio normalized, for example, since that is just a scaling factor.''')
 
 
     parser_puffcn.add_argument('--stringcols', action='store_true', default=False,
@@ -371,7 +390,12 @@ Note: No median normalization or smoothing is performed. If only late is given, 
                                help='''Return log10 values. Default = False.''')
     parser_puffcn.add_argument('--scalecov', type=float, default=1,
                                help='''Multiply coverage by this as part of protocol 17.''')
-    
+    parser_puffcn.add_argument('--SPXR', type=float, default=1e6,
+                               help='''In essence, this is like --scalecov with a different default: 1e6.''')    
+    parser_puffcn.add_argument('--pseudoZeroBins', action='store_true', default=False,
+                               help='''Not to be confused with --pseudo. This option applies only to protocols 24-27 right now. It only need be used when there are zeros in the control (early) sample. In protocols 26 and 27, this is likely to happen from the robust z-score pre-processing. If an error is thrown, try --pseudoZeroBins or --addMinOtherPlusOneToBoth. --pseudoZeroBins adds min(abs(values))/10 to bins in both samples that were 0 in contorl (early). --addMinOtherPlusOneToBoth shifts both distributions up by min(control values)+1, setting the min control value to 1.  These are not meant to be used together, but won't throw an error if they are.''')    
+    parser_puffcn.add_argument('--addMinOtherPlusOneToBoth', action='store_true', default=False,
+                               help='''This option applies only to protocols 24-27 right now. It only need be used when there are zeros in the control (early) sample. In protocols 26 and 27, this is likely to happen from the robust z-score pre-processing. If an error is thrown, try --pseudoZeroBins or --addMinOtherPlusOneToBoth. --pseudoZeroBins adds min(abs(values))/10 to bins in both samples that were 0 in contorl (early). --addMinOtherPlusOneToBoth shifts both distributions up by min(control values)+1, setting the min control value to 1. These are not meant to be used together, but won't throw an error if they are.''')    
 
 
     
@@ -888,6 +912,49 @@ Note: No median normalization or smoothing is performed. If only late is given, 
                                                 It then does median ratio normalization.
                                                 It then returns it as is or logged if --log10 or --log2 specified''')
 
+    parser_normalize_protocol.add_argument('-18', '--protocol18', action='store_true', default=False,
+                                        help='''Robust Z scores. If early (control) sample given, first is control norm (late/early, test/control) followed by robust Z. The fold-change calculation is not treated specially as it might be with other options. However, the robust Z should be the same or similar even if the t/c was not then median ratio normalized, for example, since that is just a scaling factor.''')
+
+    parser_normalize_protocol.add_argument('-19', '--protocol19', action='store_true', default=False,
+                                        help='''Rank scores. If early (control) sample given, first is control norm (late/early, test/control) followed by ranking. The fold-change calculation is not treated specially as it might be with other options. However, the rank should be the same or similar even if the t/c was not then median ratio normalized, for example, since that is just a scaling factor.''')
+
+
+    parser_normalize_protocol.add_argument('-20', '--protocol20', action='store_true', default=False,
+                                        help='''Robust Z score differences between two samples. Requires both late (test) and early (control) samples. Robust Z scores are calculated independently for each sample. Then R_control is subtracted from R_test = R_t - R_c.''')
+
+    parser_normalize_protocol.add_argument('-21', '--protocol21', action='store_true', default=False,
+                                        help='''Rank score differences between two samples. Requires both late (test) and early (control) samples. Rank scores are calculated independently for each sample. Then R_control is subtracted from R_test = R_t - R_c.''')
+
+    parser_normalize_protocol.add_argument('-22', '--protocol22', action='store_true', default=False,
+                                        help='''Signal Per Million Reads (Or Counts or Per Million whatever can be summed up in the 4th column). Bin_spmr = 1e6*Bin/Sum(Bins).
+Use --SPXR to change scaling factor from 1e6 to X. If early (control) given, both are SPMR'd independently, then late/early (test/control).
+When an early (control) sample is provided, you may also want to check the default pseudocount applied.''')
+
+    parser_normalize_protocol.add_argument('-23', '--protocol23', action='store_true', default=False,
+                                        help='''Rank standardize scores. First rank, then subtract and divide by middle: (r-M)/M, where r is a bins rank, and M is the theoretical middle rank: M=(min+max)/2. If early (control) sample given, first is control norm (late/early, test/control) followed by ranking. The fold-change calculation is not treated specially as it might be with other options. However, the rank should be the same or similar even if the t/c was not then median ratio normalized, for example, since that is just a scaling factor.''')
+
+    parser_normalize_protocol.add_argument('-24', '--protocol24', action='store_true', default=False,
+                                        help='''Pct difference from early (control): 100*(T-C)/abs(C). Usually for T and C values >= 0, but abs(C) allows both pos and neg values. This requires both test (late) and control (early) samples. It assumes samples are pre-prcoessed however you want. Other options below do pre-processing before this step.''')
+
+    parser_normalize_protocol.add_argument('-25', '--protocol25', action='store_true', default=False,
+                                        help='''Pct skew of late (test) vs early (control): 100*(T-C)/(abs(T)+abs(C)). Usually for T and C values >= 0, but (abs(T)+abs(C)) is an experimental way to allow both pos and neg values. This requires both test (late) and control (early) samples. It assumes samples are pre-prcoessed however you want. Other options below do pre-processing before this step.''')
+
+    parser_normalize_protocol.add_argument('-26', '--protocol26', action='store_true', default=False,
+                                        help='''Test Pct difference from early (control) after both test and control samples are transformed into Robust Z-scores: 100*(R_t-R_c)/abs(R_c). ''')
+
+
+    parser_normalize_protocol.add_argument('-27', '--protocol27', action='store_true', default=False,
+                                        help='''Pct skew given late (test) and early (control) samples, after both test and control samples are transformed into Robust Z-scores: 100*(R_t-R_c)/(abs(R_t)+abs(R_c)).''')
+
+
+    parser_normalize_protocol.add_argument('-28', '--protocol28', action='store_true', default=False,
+                                        help='''Test Pct difference from early (control) after both test and control samples are transformed into Ranks: 100*(R_t-R_c)/abs(R_c). ''')
+
+
+    parser_normalize_protocol.add_argument('-29', '--protocol29', action='store_true', default=False,
+                                        help='''Pct skew given late (test) and early (control) samples, after both test and control samples are transformed into Ranks: 100*(R_t-R_c)/(abs(R_t)+abs(R_c)).''')
+
+
     parser_normalize.add_argument('--stringcols', action='store_true', default=False,
                                help='''Just treat columns other than 4 as strings...''')
 
@@ -897,6 +964,16 @@ Note: No median normalization or smoothing is performed. If only late is given, 
                                help='''Return log10 values. Default = False.''')
     parser_normalize.add_argument('--scalecov', type=float, default=1,
                                help='''Multiply coverage by this as part of protocol 17.''')    
+    parser_normalize.add_argument('--SPXR', type=float, default=1e6,
+                               help='''In essence, this is like --scalecov with a different default: 1e6.''')    
+
+    parser_normalize.add_argument('--pseudoZeroBins', action='store_true', default=False,
+                               help='''Not to be confused with --pseudo. This option applies only to protocols 24-27 right now. It only need be used when there are zeros in the control (early) sample. In protocols 26 and 27, this is likely to happen from the robust z-score pre-processing. If an error is thrown, try --pseudoZeroBins or --addMinOtherPlusOneToBoth. --pseudoZeroBins adds min(abs(nonzero control values)) to bins in both samples that were 0 in contorl (early). --addMinOtherPlusOneToBoth shifts both distributions up by min(control values)+1, setting the min control value to 1. Both use minimum values for each chrom/contig independently rather than a global min. This is intended to reduce the effects of the modifications, but may introduce its own issues. These are not meant to be used together, but won't throw an error if they are.''')    
+    parser_normalize.add_argument('--addMinOtherPlusOneToBoth', action='store_true', default=False,
+                               help='''This option applies only to protocols 24-27 right now. It only need be used when there are zeros in the control (early) sample. In protocols 26 and 27, this is likely to happen from the robust z-score pre-processing. If an error is thrown, try --pseudoZeroBins or --addMinOtherPlusOneToBoth. --pseudoZeroBins adds min(abs(nonzero control values)) to bins in both samples that were 0 in contorl (early). --addMinOtherPlusOneToBoth shifts both distributions up by min(control values)+1, setting the min control value to 1. These are not meant to be used together, but won't throw an error if they are. NOTE: Both use minimum values for each chrom/contig independently rather than a global min. This is intended to reduce the effects of the modifications, but may introduce its own issues. ''')    
+    parser_normalize.add_argument('--setToControlDist', action='store_true', default=False,
+                               help='''This option applies only to protocols 24-27 right now. It resets the contorl RZ scores back to original, and scales the test R_z in same way. Z_c = (X_c-med_c)/mad_c ; X_c = mad_c * Z_c + med_c ;  X_t_c = mad_c * Z_t + med_c''')    
+
 
     parser_normalize.add_argument('-c', '--collapsed', action='store_true', default=False,
                                help='''Return collapsed variable-step bedGraph instead of expanded single-step bedGraph.
