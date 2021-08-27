@@ -48,7 +48,7 @@ def convert(x):
     if x[-1].upper() in 'KMG':
         x = d[x[-1].upper()] * float(x[:-1])
     else:
-        float(x)
+        x = float(x)
     return x
 
 def run(args):
