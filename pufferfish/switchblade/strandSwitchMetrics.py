@@ -75,11 +75,11 @@ parser.add_argument('-p', '--pseudocount', type=int, default=0,
               Suggested pseudocount if needed is 1, but using sequencing depth and other knowledge to decide is better.''')
 
 
-parser.add_argument('-H', '--hasheader', action='store_true', default=False,
-                    help='''Use this flag if the inputCSV has the header line 'chr,pos,fwd_str,rev_str'.''')
+#parser.add_argument('-H', '--hasheader', action='store_true', default=False,
+#                    help='''Use this flag if the inputCSV has the header line 'chr,pos,fwd_str,rev_str'.''')
 
-parser.add_argument('-c', '--csvformat', action='store_true', default=False,
-                    help='''Use this flag for CSV output formatting instead of bedGraph formatting.''')
+#parser.add_argument('-c', '--csvformat', action='store_true', default=False,
+#                    help='''Use this flag for CSV output formatting instead of bedGraph formatting.''')
 
 
 
