@@ -74,7 +74,12 @@ parser.add_argument('-p', '--pseudocount', type=int, default=0,
               This is not necessarily true for the human genome or smaller window sizes, thus a pseudocount can help.
               Suggested pseudocount if needed is 1, but using sequencing depth and other knowledge to decide is better.''')
 
-
+parser.add_argument('-a', '--negStrandPositionAdjustment', type=int, default=0,
+                    help='''In some applications, one needs to adjust the reported positions on the negative strands.
+For example, if you create an input file (format 1) from SAM records (Chr, pos, strand, coverage), and you want to assign the counts to 5' ends, you might adjust negative strand position by adding the readlength -1.
+This is not perfect. It is advised to do all adjustments, including this type, BEFORE using this script with utilities such as AWK.
+For the case given, BEDtools might be all you need to get actual coverage values of 5 prime ends on each strand.''')
+ 
 #parser.add_argument('-H', '--hasheader', action='store_true', default=False,
 #                    help='''Use this flag if the inputCSV has the header line 'chr,pos,fwd_str,rev_str'.''')
 
@@ -109,9 +114,9 @@ log2 = log_b(b=2)
 
 
 class PositionCounts(object):
-    def __init__(self, readlen=50, windowsize=500, pseudocount=0.1):
+    def __init__(self, negStrandPositionAdjustment=0, windowsize=500, pseudocount=0.1):
         self.posdict = dict()
-        self.readlen = readlen
+        self.negStrandPositionAdjustment = negStrandPositionAdjustment
         self.chrom = None
         self.windowsize = windowsize
         self.pseudocount = pseudocount
@@ -127,7 +132,8 @@ class PositionCounts(object):
     def addCount(self, pos, strand, count):
         '''0 = fwd strand; 16 = rev strand. Integers match SAM flags - otherwise arbitrary.'''
         if strand == 16:
-            pos += self.readlen - 1
+            #pos += self.readlen - 1
+            pos += self.negStrandPositionAdjustment
         try:
             self.posdict[pos][strand] += float(count)
         except KeyError:
@@ -319,9 +325,14 @@ def getstrand(strand):
         sys.stderr("Unexpected strand format encountered.... Exiting....")
         quit()
         
-def processCounts(fileconnection, readlen=50, windowsize=500,pseudocount=0.1):
+def processCounts(fileconnection,
+                  negStrandPositionAdjustment,
+                  windowsize=500,
+                  pseudocount=0.1):
     ## initial
-    countsOf5pEnds = PositionCounts(readlen=readlen,windowsize=windowsize, pseudocount=pseudocount)
+    countsOf5pEnds = PositionCounts(negStrandPositionAdjustment=negStrandPositionAdjustment,
+                                    windowsize=windowsize,
+                                    pseudocount=pseudocount)
     for line in fileconnection:
         line = line[:-1].split()
         chrom = line[0]
@@ -338,9 +349,14 @@ def processCounts(fileconnection, readlen=50, windowsize=500,pseudocount=0.1):
 
 
 
-def processOEMs(fileconnection, readlen=50, windowsize=500,pseudocount=0.1):
+def processOEMs(fileconnection,
+                negStrandPositionAdjustment,
+                windowsize=500,
+                pseudocount=0.1):
     ## initial
-    countsOf5pEnds = PositionCounts(readlen=readlen,windowsize=windowsize, pseudocount=pseudocount)
+    countsOf5pEnds = PositionCounts(negStrandPositionAdjustment=negStrandPositionAdjustment,
+                                    windowsize=windowsize,
+                                    pseudocount=pseudocount)
     for line in fileconnection:
         line = line[:-1].split()
         chrom = line[0]
@@ -356,9 +372,14 @@ def processOEMs(fileconnection, readlen=50, windowsize=500,pseudocount=0.1):
     countsOf5pEnds.outputChromOEM(chrom)          
 
 
-def processOEMsFromLoessCSV(fileconnection, readlen=50, windowsize=300,pseudocount=1e-9):
+def processOEMsFromLoessCSV(fileconnection,
+                            negStrandPositionAdjustment,
+                            windowsize=300,
+                            pseudocount=1e-9):
     ## initial
-    countsOf5pEnds = PositionCounts(readlen=readlen,windowsize=windowsize, pseudocount=pseudocount)
+    countsOf5pEnds = PositionCounts(negStrandPositionAdjustment=negStrandPositionAdjustment,
+                                    windowsize=windowsize,
+                                    pseudocount=pseudocount)
     for line in fileconnection:
         line = line[:-1].split(",")
         chrom = line[0]
@@ -378,9 +399,14 @@ def processOEMsFromLoessCSV(fileconnection, readlen=50, windowsize=300,pseudocou
     countsOf5pEnds.outputChromOEM(chrom)
 
 
-def processOEMsFromOEMinput(fileconnection, readlen=50, windowsize=300,pseudocount=1e-9):
+def processOEMsFromOEMinput(fileconnection,
+                            negStrandPositionAdjustment,
+                            windowsize=300,
+                            pseudocount=1e-9):
     ## initial
-    countsOf5pEnds = PositionCounts(readlen=readlen,windowsize=windowsize, pseudocount=pseudocount)
+    countsOf5pEnds = PositionCounts(negStrandPositionAdjustment=negStrandPositionAdjustment,
+                                    windowsize=windowsize,
+                                    pseudocount=pseudocount)
     for line in fileconnection:
         line = line[:-1].split(",")
         chrom = line[0]
