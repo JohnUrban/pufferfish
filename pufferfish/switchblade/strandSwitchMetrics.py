@@ -247,8 +247,17 @@ def OEM(chrom, posdict, windowsize=500, pseudocount=0.1):
     log2Dict = {2:log2(2)}
     # Set the start and end position (end position is 10,000 bp less than last position) (JB)
     start = chrStart+windowsize-1
+    ##end = chrLen - windowsize ## make sure this works
     end = chrLen - windowsize + 1 ## make sure this works
-    
+
+    ## GIVE DUMMY LINE AND STOP IF CHRLEN < MinLen == (w+1)*2
+    if chrLen < (windowsize+1)*2:
+        Pos = 0
+        oem, ratio, height, balance, bias, skew, summit = 0, 0, 0, 0, 0, 0, 0
+        sys.stdout.write("\t".join([str(e) for e in [chrom, Pos, oem, ratio, height, balance, bias, skew, summit]])+"\n")
+        return
+
+    ### CONTINUE IF CHRLEN >= MinLen == (w+1)*2
     # Calculate the first window (JB) -- float() used to avoid default 'int division'
     WL, CL, WR, CR = pseudocount, pseudocount, pseudocount, pseudocount
     L = [chrStart,start+1]
