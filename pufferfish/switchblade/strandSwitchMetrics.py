@@ -47,11 +47,11 @@ parser_input.add_argument('-i', "--input",
 parser.add_argument('-f', "--inputformat",
                    type=int, required=True,
                    help='''What input format to expect?
-1   =   Complete position records: Chr, pos, fwd strand coverage, reverse strand coverage. (pos is 1 -based)
-2   =   Stranded position records format1: Chr, pos, strand, coverage.
+1   =   CSV: Complete position records: Chr, pos, fwd strand coverage, reverse strand coverage. (pos is 1 -based)
+2   =   TSV: Stranded position records format1: Chr, pos, strand, coverage.
             Forward strand can be specified as 0, +, plus, f, fwd, forward, pos, positive.
             Reverse strand can be specified as 16, -, minus, r, rev, reverse, neg, negative.
-3   =   Loess smoothed position records: chr, pos, smoothed value*.
+3   =   CSV: Loess smoothed position records: chr, pos, smoothed value*.
         The smoothed value is obtained first by getting counts from fwd and reverse strands independently.
         Then counts on negative strand are moved as needed (e.g. to represent 5' end) and made negative (e.g. 10 becomes -10).
         Then positive and negative counts are combined. Then smoothing is performed to give smoothed averages over each position weighted toward the strand with most coverage.
