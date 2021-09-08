@@ -60,9 +60,9 @@ parser.add_argument('-f', "--inputformat",
 parser.add_argument('-F', "--outputformat",
                    type=int, default=2,
                    help='''What input format to expect? Default is format 2.
-1   =   OEM input as output (same as input format 1): Chr, pos, fwd strand coverage, reverse strand coverage. (pos is 1 -based)
+1   =   CSV: OEM input as output (same as input format 1): Chr, pos, fwd strand coverage, reverse strand coverage. (pos is 1 -based)
         Only possible with input format 2.
-2   =   OEM output: Skip the 2 step process that pipes into OEM.py and get OEM output here.''')
+2   =   TSV: OEM expanded output: Skip the 2 step process that pipes into OEM.py and get OEM output here.''')
 
 
 parser.add_argument('-w', '--windowsize', type=int, default=10000,
@@ -441,7 +441,7 @@ if __name__ == '__main__':
                                 windowsize=args.windowsize,
                                 pseudocount = pseudocount)
     elif args.inputformat == 2:
-        if args.output == 1:
+        if args.outputformat == 1:
             processCounts(fileconnection,
                           windowsize=windowsize,
                           pseudocount = pseudocount)
