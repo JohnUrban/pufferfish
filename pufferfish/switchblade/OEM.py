@@ -213,7 +213,7 @@ def writeOEM2Bdg(oemDict, out):
             start = str(oemDict[chromosome]['pos'][i]-1)
             end = str(oemDict[chromosome]['pos'][i])
             oem = str(oemDict[chromosome]['oem'][i])
-            out.writelines('\t'.join([chrom, start, end, oem]) + "\n")
+            out.writelines('\t'.join([str(e) for e in [chrom, start, end, oem]]) + "\n")
 
 def writeOEM2CSV(oemDict, out):
     """Takes in oemDict and writes out a CSV similar to input CSV: chr,pos,oem
@@ -228,7 +228,7 @@ def writeOEM2CSV(oemDict, out):
             chrom = str(chromosome)
             pos = str(oemDict[chromosome]['pos'][i])
             oem = str(oemDict[chromosome]['oem'][i])
-            out.writelines(','.join([chrom, pos, oem]) + "\n")
+            out.writelines(','.join([str(e) for e in [chrom, pos, oem]]) + "\n")
 
 
     
