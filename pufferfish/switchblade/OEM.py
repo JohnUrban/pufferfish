@@ -141,7 +141,7 @@ def OEMDict(okazakiDict, windowSize=500, pseudocount=0):
 
         ## GIVE DUMMY LINE AND STOP IF CHRLEN < MinLen == (w+1)*2
         if chrLen < (windowSize+1)*2:
-            oemDict[chromosome] = {'pos':[0], 'oem':[0]}
+            oemDict[chromosome] = {'pos':[1], 'oem':[0]}
             continue
 
 
