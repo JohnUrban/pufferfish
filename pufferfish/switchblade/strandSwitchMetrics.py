@@ -252,7 +252,7 @@ def OEM(chrom, posdict, windowsize=500, pseudocount=0.1):
 
     ## GIVE DUMMY LINE AND STOP IF CHRLEN < MinLen == (w+1)*2
     if chrLen < (windowsize+1)*2:
-        Pos = 0
+        Pos = 1
         oem, ratio, height, balance, bias, skew, summit = 0, 0, 0, 0, 0, 0, 0
         sys.stdout.write("\t".join([str(e) for e in [chrom, Pos, oem, ratio, height, balance, bias, skew, summit]])+"\n")
         return
