@@ -139,6 +139,13 @@ def OEMDict(okazakiDict, windowSize=500, pseudocount=0):
         chrLen = len(okazakiDict[chromosome]["pos"])
         sys.stderr.write( "Chromosome Length = " + str(chrLen) + "\n" )
 
+        ## GIVE DUMMY LINE AND STOP IF CHRLEN < MinLen == (w+1)*2
+        if chrLen < (windowSize+1)*2:
+            oemDict[chromosome]['oem'][0] = 0
+            continue
+
+
+        ### CONTINUE IF CHRLEN >= MinLen == (w+1)*2
         # Set the start and end position (end position is 10,000 bp less than last position) (JB)
         start = windowSize-1
         end = chrLen - windowSize ## make sure this works
