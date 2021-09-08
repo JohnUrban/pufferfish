@@ -438,19 +438,23 @@ if __name__ == '__main__':
 
     if args.inputformat == 1:
         processOEMsFromOEMinput(fileconnection,
+                                negStrandPositionAdjustment=args.negStrandPositionAdjustment,
                                 windowsize=args.windowsize,
                                 pseudocount = args.pseudocount)
     elif args.inputformat == 2:
         if args.outputformat == 1:
             processCounts(fileconnection,
+                          negStrandPositionAdjustment = args.negStrandPositionAdjustment,
                           windowsize = args.windowsize,
                           pseudocount = args.pseudocount)
         else: #2
             processOEMs(fileconnection,
-                            windowsize = args.windowsize,
-                            pseudocount = args.pseudocount)
+                        negStrandPositionAdjustment = args.negStrandPositionAdjustment,
+                        windowsize = args.windowsize,
+                        pseudocount = args.pseudocount)
     elif args.inputformat == 3:
         processOEMsFromLoessCSV(fileconnection,
+                                negStrandPositionAdjustment = args.negStrandPositionAdjustment,
                                 windowsize = args.windowsize,
                                 pseudocount = args.pseudocount)
 
