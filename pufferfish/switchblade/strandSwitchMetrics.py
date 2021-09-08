@@ -68,7 +68,7 @@ parser.add_argument('-F', "--outputformat",
 parser.add_argument('-w', '--windowsize', type=int, default=10000,
                     help='''Window size to use. Default = 10000 (10 kb). windowSize is how big the window is to left of a position (for WL and CL calculations) and to the right (for WR and CR). This should be set to '10000' if unsure.''')
 
-parser.add_argument('-p', '--pseudocount', type=int, default=0,
+parser.add_argument('-p', '--pseudocount', type=float, default=0,
                     help='''Pseudocount to use. Default = 0. The pseudocount is used to prevent division by 0.
               In 10kb bins on yeast genome it is unlikely to get a division-by-zero error.
               This is not necessarily true for the human genome or smaller window sizes, thus a pseudocount can help.
@@ -127,34 +127,75 @@ class PositionCounts(object):
         elif self.chrom != chrom:
             return False
         else: #self.chrom == chrom
-            return True           
+            return True
+    def changeChrom(self, chrom):
+        self.chrom = chrom
             
-    def addCount(self, pos, strand, count):
+##    def addCount(self, pos, strand, count):
+##        '''0 = fwd strand; 16 = rev strand. Integers match SAM flags - otherwise arbitrary.'''
+##        if strand == 16:
+##            #pos += self.readlen - 1
+##            pos += self.negStrandPositionAdjustment
+##        try:
+##            self.posdict[pos][strand] += float(count)
+##        except KeyError:
+##            try:
+##                self.posdict[pos][strand] = float(count)
+##            except:
+##                self.posdict[pos] = {0:0,16:0}
+##                self.posdict[pos][strand] = float(count)
+    def addCount(self, chrom, pos, strand, count):
         '''0 = fwd strand; 16 = rev strand. Integers match SAM flags - otherwise arbitrary.'''
+            
         if strand == 16:
             #pos += self.readlen - 1
             pos += self.negStrandPositionAdjustment
-        try:
-            self.posdict[pos][strand] += float(count)
-        except KeyError:
-            try:
-                self.posdict[pos][strand] = float(count)
-            except:
-                self.posdict[pos] = {0:0,16:0}
-                self.posdict[pos][strand] = float(count)
-            
-            
-            
-    def outputChrom(self, newchrom):
-        for pos in self.posdict.keys():
-            fwd = self.posdict[pos][0]
-            rev = self.posdict[pos][16]
-            print ",".join(str(e) for e in [self.chrom,pos,fwd,rev])
 
-    def outputChromOEM(self,newchrom):
-        OEM(self.chrom, self.posdict, self.windowsize, self.pseudocount)
-        self.chrom = newchrom
-        self.posdict = dict()
+        # Ensure/initialize chrom key
+        try:
+            self.posdict[chrom]
+        except:
+            self.posdict[chrom] = {}
+
+        # Ensure/initialize chrom pos key
+        try:
+            self.posdict[chrom][pos]
+        except:
+            self.posdict[chrom][pos] = {0:0,16:0}
+
+        # Add count to strand
+        self.posdict[chrom][pos][strand] += float(count)
+
+            
+##    def outputChrom(self, newchrom):
+##        for pos in self.posdict.keys():
+##            fwd = self.posdict[pos][0]
+##            rev = self.posdict[pos][16]
+##            print ",".join(str(e) for e in [self.chrom,pos,fwd,rev])
+
+    def outputChrom(self, chrom=None):
+        if chrom is None:
+            chrom=self.chrom
+        for pos in sorted(self.posdict[chrom].keys()):
+            fwd = self.posdict[chrom][pos][0]
+            rev = self.posdict[chrom][pos][16]
+            print ",".join(str(e) for e in [chrom,pos,fwd,rev])
+
+    def outputAllChrom(self):
+        for chrom in sorted(self.posdict.keys()):
+            self.outputChrom(chrom)
+            
+    def outputChromOEM(self, chrom=None):
+        if chrom is None:
+            chrom=self.chrom
+        OEM(chrom, self.posdict[chrom], self.windowsize, self.pseudocount)
+        #self.chrom = newchrom
+        #self.posdict = dict()
+
+    def outputAllChromOEM(self):
+        for chrom in sorted(self.posdict.keys()):
+            self.outputChromOEM(chrom)
+        
 
     def outputChromLocalCorrelation(self,newchrom):
         localCor(self.chrom)
@@ -206,7 +247,7 @@ def OEM(chrom, posdict, windowsize=500, pseudocount=0.1):
     log2Dict = {2:log2(2)}
     # Set the start and end position (end position is 10,000 bp less than last position) (JB)
     start = chrStart+windowsize-1
-    end = chrLen - windowsize ## make sure this works
+    end = chrLen - windowsize + 1 ## make sure this works
     
     # Calculate the first window (JB) -- float() used to avoid default 'int division'
     WL, CL, WR, CR = pseudocount, pseudocount, pseudocount, pseudocount
@@ -325,54 +366,151 @@ def getstrand(strand):
         sys.stderr("Unexpected strand format encountered.... Exiting....")
         quit()
         
+##def processCounts(fileconnection,
+##                  negStrandPositionAdjustment,
+##                  windowsize=500,
+##                  pseudocount=0.1,
+##                  delim="\t"):
+##    ## initial
+##    countsOf5pEnds = PositionCounts(negStrandPositionAdjustment=negStrandPositionAdjustment,
+##                                    windowsize=windowsize,
+##                                    pseudocount=pseudocount)
+##    
+##    for line in fileconnection:
+##        line = line.strip().split( delim )
+##        chrom = line[0]
+##        pos = int(line[1])
+##        strand = getstrand(line[2])
+##        count = int(line[3])
+##        countsOf5pEnds.addCount(chrom=chrom,
+##                                pos=pos,
+##                                strand=strand,
+##                                count=count)
+####        if countsOf5pEnds.sameChrom(chrom):
+####            countsOf5pEnds.addCount(chrom=chrom,
+####                                    pos=pos,
+####                                    strand=strand,
+####                                    count=count)
+####        else:
+####            countsOf5pEnds.outputChrom()
+####            countsOf5pEnds.changeChrom(chrom)
+####            countsOf5pEnds.addCount(chrom=chrom,
+####                                    pos=pos,
+####                                    strand=strand,
+####                                    count=count)
+####    ## print last chr
+####    countsOf5pEnds.outputChrom()
+##    countsOf5pEnds.outputAllChrom()
+
+
+##def processOEMs(fileconnection,
+##                negStrandPositionAdjustment,
+##                windowsize=500,
+##                pseudocount=0.1):
+##    ## initial
+##    countsOf5pEnds = PositionCounts(negStrandPositionAdjustment=negStrandPositionAdjustment,
+##                                    windowsize=windowsize,
+##                                    pseudocount=pseudocount)
+##    for line in fileconnection:
+##        line = line[:-1].split()
+##        chrom = line[0]
+##        pos = int(line[1])
+##        strand = getstrand(line[2])
+##        count = int(line[3])
+##        countsOf5pEnds.addCount(chrom=chrom,
+##                                pos=pos,
+##                                strand=strand,
+##                                count=count)
+####        if countsOf5pEnds.sameChrom(chrom):
+####            countsOf5pEnds.addCount(chrom=chrom,
+####                                    pos=pos,
+####                                    strand=strand,
+####                                    count=count)
+####        else:
+####            countsOf5pEnds.outputChromOEM()
+####            countsOf5pEnds.changeChrom(chrom)
+####            countsOf5pEnds.addCount(chrom=chrom,
+####                                    pos=pos,
+####                                    strand=strand,
+####                                    count=count)
+####    ## print last chr
+####    countsOf5pEnds.outputChromOEM()
+##    countsOf5pEnds.outputAllChromOEM()
+
+    
+
 def processCounts(fileconnection,
                   negStrandPositionAdjustment,
                   windowsize=500,
-                  pseudocount=0.1):
+                  pseudocount=0.1,
+                  delim="\t"):
     ## initial
     countsOf5pEnds = PositionCounts(negStrandPositionAdjustment=negStrandPositionAdjustment,
                                     windowsize=windowsize,
                                     pseudocount=pseudocount)
+    
     for line in fileconnection:
-        line = line[:-1].split()
+        line = line.strip().split( delim )
         chrom = line[0]
         pos = int(line[1])
         strand = getstrand(line[2])
         count = int(line[3])
-        if countsOf5pEnds.sameChrom(chrom):
-            countsOf5pEnds.addCount(pos,strand,count)
-        else:
-            countsOf5pEnds.outputChrom(chrom)
-            countsOf5pEnds.addCount(pos,strand,count)
-    ## print last chr
-    countsOf5pEnds.outputChrom(chrom)
+        countsOf5pEnds.addCount(chrom=chrom,
+                                pos=pos,
+                                strand=strand,
+                                count=count)
+    return countsOf5pEnds
+
+def printOEMstyleInput(fileconnection,
+                  negStrandPositionAdjustment,
+                  windowsize=500,
+                  pseudocount=0.1,
+                  delim="\t"):
+    counts = processCounts(fileconnection,
+                  negStrandPositionAdjustment,
+                  windowsize,
+                  pseudocount,
+                  delim)
+    counts.outputAllChrom()
 
 
+         
+##def processOEMs(fileconnection,
+##                negStrandPositionAdjustment,
+##                windowsize=500,
+##                pseudocount=0.1,
+##                  delim="\t"):
+##    ## initial
+##    countsOf5pEnds = PositionCounts(negStrandPositionAdjustment=negStrandPositionAdjustment,
+##                                    windowsize=windowsize,
+##                                    pseudocount=pseudocount)
+##    for line in fileconnection:
+##        line = line.strip().split( delim )
+##        chrom = line[0]
+##        pos = int(line[1])
+##        strand = getstrand(line[2])
+##        count = int(line[3])
+##        countsOf5pEnds.addCount(chrom=chrom,
+##                                pos=pos,
+##                                strand=strand,
+##                                count=count)
+##
+##    countsOf5pEnds.outputAllChromOEM()
 
-def processOEMs(fileconnection,
+def printStrandSwitchMetrics(fileconnection,
                 negStrandPositionAdjustment,
                 windowsize=500,
-                pseudocount=0.1):
-    ## initial
-    countsOf5pEnds = PositionCounts(negStrandPositionAdjustment=negStrandPositionAdjustment,
-                                    windowsize=windowsize,
-                                    pseudocount=pseudocount)
-    for line in fileconnection:
-        line = line[:-1].split()
-        chrom = line[0]
-        pos = int(line[1])
-        strand = getstrand(line[2])
-        count = int(line[3])
-        if countsOf5pEnds.sameChrom(chrom):
-            countsOf5pEnds.addCount(pos,strand,count)
-        else:
-            countsOf5pEnds.outputChromOEM(chrom)
-            countsOf5pEnds.addCount(pos,strand,count)
-    ## print last chr
-    countsOf5pEnds.outputChromOEM(chrom)          
+                pseudocount=0.1,
+                  delim="\t"):
+    counts = processCounts(fileconnection,
+                  negStrandPositionAdjustment,
+                  windowsize,
+                  pseudocount,
+                  delim)
+    counts.outputAllChromOEM()
 
-
-def processOEMsFromLoessCSV(fileconnection,
+# def processOEMsFromLoessCSV
+def printStrandSwitchMetricsFromLoessCSV(fileconnection,
                             negStrandPositionAdjustment,
                             windowsize=300,
                             pseudocount=1e-9):
@@ -390,16 +528,18 @@ def processOEMsFromLoessCSV(fileconnection,
             count = count*-1
         else:
             strand = 0
-        if countsOf5pEnds.sameChrom(chrom):
-            countsOf5pEnds.addCount(pos,strand,count)
-        else:
-            countsOf5pEnds.outputChromOEM(chrom)
-            countsOf5pEnds.addCount(pos,strand,count)
-    ## print last chr
-    countsOf5pEnds.outputChromOEM(chrom)
+        countsOf5pEnds.addCount(chrom,pos,strand,count)
+##        if countsOf5pEnds.sameChrom(chrom):
+##            countsOf5pEnds.addCount(pos,strand,count)
+##        else:
+##            countsOf5pEnds.outputChromOEM(chrom)
+##            countsOf5pEnds.addCount(pos,strand,count)
+##    ## print last chr
+##    countsOf5pEnds.outputChromOEM(chrom)
+    countsOf5pEnds.outputAllChromOEM()
 
-
-def processOEMsFromOEMinput(fileconnection,
+#def processOEMsFromOEMinput
+def printStrandSwitchMetricsFromOEMstyleInput(fileconnection,
                             negStrandPositionAdjustment,
                             windowsize=300,
                             pseudocount=1e-9):
@@ -413,16 +553,10 @@ def processOEMsFromOEMinput(fileconnection,
         pos = int(line[1])
         fwd = float(line[2])
         rev = float(line[3])
-        if countsOf5pEnds.sameChrom(chrom):
-            # add fwd
-            countsOf5pEnds.addCount(pos,0,fwd)
-            # add rev
-            countsOf5pEnds.addCount(pos,16,rev)
-        else:
-            countsOf5pEnds.outputChromOEM(chrom)
-            countsOf5pEnds.addCount(pos,strand,count)
-    ## print last chr
-    countsOf5pEnds.outputChromOEM(chrom)
+        countsOf5pEnds.addCount(chrom,pos,0,fwd)
+        countsOf5pEnds.addCount(chrom,pos,16,rev)
+    ## print 
+    countsOf5pEnds.outputAllChromOEM()
 
 
 ##############################################################################
@@ -437,23 +571,23 @@ if __name__ == '__main__':
 
 
     if args.inputformat == 1:
-        processOEMsFromOEMinput(fileconnection,
+        printStrandSwitchMetricsFromOEMstyleInput(fileconnection,
                                 negStrandPositionAdjustment=args.negStrandPositionAdjustment,
                                 windowsize=args.windowsize,
                                 pseudocount = args.pseudocount)
     elif args.inputformat == 2:
         if args.outputformat == 1:
-            processCounts(fileconnection,
+            printOEMstyleInput(fileconnection,
                           negStrandPositionAdjustment = args.negStrandPositionAdjustment,
                           windowsize = args.windowsize,
                           pseudocount = args.pseudocount)
         else: #2
-            processOEMs(fileconnection,
+            printStrandSwitchMetrics(fileconnection,
                         negStrandPositionAdjustment = args.negStrandPositionAdjustment,
                         windowsize = args.windowsize,
                         pseudocount = args.pseudocount)
     elif args.inputformat == 3:
-        processOEMsFromLoessCSV(fileconnection,
+        printStrandSwitchMetricsFromLoessCSV(fileconnection,
                                 negStrandPositionAdjustment = args.negStrandPositionAdjustment,
                                 windowsize = args.windowsize,
                                 pseudocount = args.pseudocount)

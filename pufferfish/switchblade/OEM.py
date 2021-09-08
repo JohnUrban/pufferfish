@@ -108,7 +108,7 @@ def okazakiFileReader(inputfile, header=True):
     # Parse file line by line
     for line in okazaki:
         line = line[:-1].split(",")
-        chromosome, pos, fwd, rev = line[0], int(line[1]), int(line[2]), int(line[3])
+        chromosome, pos, fwd, rev = line[0], int(line[1]), float(line[2]), float(line[3])
         try:
             #okazakiDict[chromosome]
             okazakiDict[chromosome]["pos"] += [pos]
@@ -135,9 +135,9 @@ def OEMDict(okazakiDict, windowSize=500, pseudocount=0):
 
     # start loop over all chromosomes
     for chromosome in chromosomes:
-        print "Processing chromosome:", chromosome
+        sys.stderr.write( "Processing chromosome: " + str(chromosome) + "\n")
         chrLen = len(okazakiDict[chromosome]["pos"])
-        print "Chromosome Length = ", chrLen
+        sys.stderr.write( "Chromosome Length = " + str(chrLen) + "\n" )
 
         # Set the start and end position (end position is 10,000 bp less than last position) (JB)
         start = windowSize-1
