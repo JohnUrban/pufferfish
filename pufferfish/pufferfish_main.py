@@ -750,7 +750,14 @@ Note: No median normalization or smoothing is performed. If only late is given, 
     parser_summits.add_argument('--stringcols', action='store_true', default=False,
                                help='''Just treat columns other than 4 as strings...''')
     
-
+    parser_summits.add_argument('--log2', action='store_true', default=False,
+                               help='''Return log2 values. Default = False.''')
+    parser_summits.add_argument('--log10', action='store_true', default=False,
+                               help='''Return log10 values. Default = False.''')
+                              
+    parser_summits.add_argument('--endsmoothing', action='store_true', default=False,
+                              help=''' Add smoothing to the absolute end of any of the protocols for more flexibility here. This comes after log-transformation steps, for example, which optionally comes at the end of any protocol.''')
+   
    
     parser_summits.add_argument('-ps', '--pseudo', type=float, default=0.1,
                                help=''' Before normalizing late to early, add this pseudocount to all counts in order to avoid division by zero.
