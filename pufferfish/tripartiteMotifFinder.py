@@ -86,9 +86,9 @@ desc='''
     chr start end name score strand
     
 
-    prefix.positive_strand.lhs_likelihood.wig
+    prefix.positive_strand.lhs_likelihood.wig = lhs_emit + lhs_trans
 
-    prefix.positive_strand.rhs_likelihood.wig
+    prefix.positive_strand.rhs_likelihood.wig = rhs_emit + rhs_trans
 
     prefix.tripartite-motif-locations.bed (score = total likelihood)
 
@@ -189,6 +189,13 @@ parser.add_argument('-nsh', '--nameshift',
                     help='''If analyzing a sub-sequence extracted from a larger sequence,
                     this assumes the sequence has a name structure chr:start=end, and that you want to only report the "chr" component in output Wigs and BEDs.''',)
 
+parser.add_argument('-msml', '--midSeqMinLen',
+                    type=str, default='0',
+                    help='''By default, this script checks all possible middle sequences from 0 bp to the max middle sequence length in the training table.
+                            This tells it to only search starting from given minimum middle seq len.
+                            For example, if there is only 1 middle sequence length and you dont want to look for other lengths, just provide that length.
+                            Use "auto" to automatically use the shortest middle seq len in the training data.''',)
+
 
 args = parser.parse_args()
                                                                
@@ -201,7 +208,8 @@ def run(args):
     args.tripcutoff = float(args.tripcutoff) if args.tripcutoff not in ('auto', 'min', 'max', 'mean', 'median') else args.tripcutoff
     
     # Train
-    model = tripartiteProfileModel('/Users/johnurban/Documents/data/sciara/EcRE/Table1-ver5-April16-MikeF-or-Yutaka-EcRE-analysis.transcribed.txt', pseudo=args.pseudo)
+    #model = tripartiteProfileModel('/Users/johnurban/Documents/data/sciara/EcRE/Table1-ver5-April16-MikeF-or-Yutaka-EcRE-analysis.transcribed.txt', pseudo=args.pseudo)
+    model = tripartiteProfileModel(args.trainingTable, pseudo=args.pseudo)
     model.train.to_csv(args.prefix + '.training-results.txt', sep="\t", index=False)
     
     # Open output files
@@ -228,35 +236,54 @@ def run(args):
                                            name = str(fa.id),
                                            model = model,
                                            bipcutoff = args.bipcutoff,
-                                           tripcutoff = args.tripcutoff)
+                                           tripcutoff = args.tripcutoff,
+                                           minMidSeqLen = args.midSeqMinLen)
 
+        ##LHS WIG
         seq.to_stderr("Writing LHS likelihood wig.")
-        lhswig.write( seq.lhs_wig(reverse=args.revcomp,
-                                  start=args.startshift+1) + '\n' )
+        wig = seq.lhs_wig(reverse=args.revcomp,
+                                  start=args.startshift+1)
+        if wig:
+            lhswig.write( wig + '\n' )
 
+        ## RHS WIG
         seq.to_stderr("Writing RHS likelihood wig.")
-        rhswig.write( seq.rhs_wig(reverse=args.revcomp,
-                                  start=args.startshift+1) + '\n' )
+        wig = seq.rhs_wig(reverse=args.revcomp,
+                                  start=args.startshift+1)
+        if wig:
+            rhswig.write( wig + '\n' )
 
+        ## BIP WIG
         seq.to_stderr("Writing bipartite likelihood wig.")
-        bipwig.write( seq.bipartite_wig(adjust=args.adjust,
+        wig = seq.bipartite_wig(adjust=args.adjust,
                                         reverse=args.revcomp,
-                                        start=args.startshift+1) + '\n' )
+                                        start=args.startshift+1)
+        if wig:
+            bipwig.write( wig + '\n' )
 
+        ## TRIP WIG
         seq.to_stderr("Writing tripartite likelihood wig.")
-        tripwig.write( seq.tripartite_wig(adjust=args.adjust,
+        wig = seq.tripartite_wig(adjust=args.adjust,
                                           reverse=args.revcomp,
-                                          start=args.startshift+1) + '\n' )
+                                          start=args.startshift+1)
+        if wig:
+            tripwig.write( wig + '\n' )
 
+        ## BIP BDG
         seq.to_stderr("Writing bipartite BEDGRAPH.")
-        bipbed.write( seq.bipartite_bedgraph(adjust=args.adjust,
+        bdg = seq.bipartite_bedgraph(adjust=args.adjust,
                                         reverse=args.revcomp,
-                                        start=args.startshift) + '\n' )
+                                        start=args.startshift)
+        if bdg:
+            bipbed.write( bdg + '\n' )
 
+        ## TRIP BDG
         seq.to_stderr("Writing tripartite BEDGRAPH.")
-        tripbed.write( seq.tripartite_bedgraph(adjust=args.adjust,
+        bdg = seq.tripartite_bedgraph(adjust=args.adjust,
                                         reverse=args.revcomp,
-                                        start=args.startshift) + '\n' )
+                                        start=args.startshift)
+        if bdg:
+            tripbed.write( bdg + '\n' )
 
         seq.to_stderr("Done!")
         
@@ -272,6 +299,6 @@ def run(args):
 
 
 #### EXECUTE
-
-run(args)
+if __name__ == "__main__":
+    run(args)
 

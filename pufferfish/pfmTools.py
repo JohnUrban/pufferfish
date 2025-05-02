@@ -562,7 +562,7 @@ class tripartiteProfileModel(object):
 
 class triPartiteSequenceSearch(object):
     ''' To search the Reverse Complement Strand, simply provide it as the sequence, and use the reverse option for writing Wigs and Beds.'''
-    def __init__(self, sequence, name, model, bipcutoff='auto', tripcutoff='auto', verbose=True):
+    def __init__(self, sequence, name, model, bipcutoff='auto', tripcutoff='auto', minMidSeqLen=0, verbose=True):
         ''' cutoffs can be any number or the following strings: auto, min, max, mean, median. '''
         ## VARS
         self.sequence = sequence
@@ -584,6 +584,8 @@ class triPartiteSequenceSearch(object):
         self.progress = 0
         self.updateprog = 0.1
         self.verbose = verbose
+        self.minMidSeqLen = self.model.mid_seq_min_len if minMidSeqLen == "auto" else int(minMidSeqLen)
+        
         
         ## EXEC
         ## Todo -- can compute LHS and RHS in one pass...
@@ -682,11 +684,11 @@ class triPartiteSequenceSearch(object):
         for i in range(self.seqlen - self.model.max_motif_len + 1):
             self.__progmsg(i)
             #mid_rhs = float('-inf')
-            trip = float('-inf')
+            lhs = self.lhs_likelihood[i]      # lhs + mid + rhs
             rhs = float('-inf')
-            lhs = self.lhs_likelihood[i]
+            trip = float('-inf')
             # identify max relative rhs pos
-            for midlen in range(self.model.mid_seq_max_len):
+            for midlen in range(self.minMidSeqLen, self.model.mid_seq_max_len + 1): ## min is 0 by default, minlen seen if auto specified, or w/e int given
                 cand_rhs_pos = i + self.model.lhs_len + midlen
                 cand_rhs = self.rhs_likelihood[cand_rhs_pos]
                 if cand_rhs > rhs:
@@ -852,7 +854,8 @@ class triPartiteSequenceSearch(object):
     
 
 ## Uncomment for development purposes.
-self = tripartiteProfileModel('/Users/johnurban/Documents/data/sciara/EcRE/Table1-ver5-April16-MikeF-or-Yutaka-EcRE-analysis.transcribed.txt')
-seq = triPartiteSequenceSearch('GAGGTCAATGACCTCAAAAAAAAAAGGGTGCGATGAATCAGGGGGGGGGGGGGG', 'exampleseq', self)
+#self = tripartiteProfileModel('/Users/johnurban/Documents/data/sciara/EcRE/Table1-ver5-April16-MikeF-or-Yutaka-EcRE-analysis.transcribed.txt')
+#seq = triPartiteSequenceSearch('GAGGTCAATGACCTCAAAAAAAAAAGGGTGCGATGAATCAGGGGGGGGGGGGGG', 'exampleseq', self)
 
-
+#self = tripartiteProfileModel('/Users/johnurban/GoogleDrives/Carnegie/spradling_lab/mypapers/miiko/yeastnsseq/data/oridb/ACS/tripartite/acs-1992/train-table-1992.txt')
+#seq = triPartiteSequenceSearch('GATTACATTTATATTTAGATTACA', 'exampleseq', self)
