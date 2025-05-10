@@ -1,0 +1,10 @@
+name: pufferfish-sandbox-clean
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=2.7
+  - rpy2=2.8.6
+  - pybedtools
+prefix: /mnt/sequence/jurban/software/conda/anaconda3/envs/pufferfish
