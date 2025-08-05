@@ -83,6 +83,8 @@ class CovBed(object):
         self.sum = None
         self.nbins = None
         self.localmeds = None
+        self.localmeans = None
+        self.localtrimmedmeans = None
         self.count_only=count_only ## When False, start/end dicts are initialized, but remain empty: useful when comparing 2 bedgraphs of identical coords. See also MultiCovBed (though that currently requires a "stage file")
         self._extract_data(replace, replace_with, replace_this)
         
@@ -155,13 +157,176 @@ class CovBed(object):
         counts = np.concatenate(self.count.values())
         self.median = float(np.median(counts))
 
-    def _safe_median_(self, x, unsafe=0, safe=1, trimmedMeanFirst=True, meanFirst=True, extreme=0.25):
+
+    
+
+
+
+
+
+
+
+
+
+
+    def _trimmed_mean_(self, x, extreme=0.25):
+        ''' Returns the trimmed mean of x.
+            Extreme is the proportion of values to trim from each end of sorted x.
+            e.g. extreme=0.25 means 25% of values are trimmed from each end, so 50% of values are used to calculate the mean.
+            If len(x) is 2 or 3, it returns the median of x.
+            If len(x) < 2, it returns the only value in x.'''
+        if len(x) < 2:
+            return x[0]
+        elif len(x) <= 3:
+            return np.median(x)
+        else:
+            sort = sorted(x)
+            l = len(sort)
+            e = int(round(extreme*l))
+            if e < (l-e):
+                sort = sort[e:(l-e)] 
+            ## This does have an else.....
+            return np.mean(sort)
+
+
+    def _safe_trimmed_mean_(self, x, unsafe=0, safe=1, meanFirst=True, extreme=0.25, play_it_safe=True):
         ''' if median is unsafe, make it safe.
             Optionally try chekcing and using safety of mean first'''
+        ## Get trimmed mean of x.
+        ans = self._trimmed_mean_(x, extreme=extreme)
+
+        ## Some use cases may want to play with "unsafe" values, so this is an option (e.g. for median smoothing, there are no "unsafe" values).
+        if not play_it_safe: ## i.e. if play_it_unsafe:
+            ## RETURN!!! (Exit function here)
+            return ans
+        ## ELSE:
+        if ans == unsafe and meanFirst:
+            sys.stderr.write('Unsafe 2\n')
+            ans = np.mean(x)
+        ## Checks median or mean depending on safety of median and meanfirst option.
+        if ans == unsafe:
+            sys.stderr.write('Unsafe 3\n')
+            ans = safe  ## This should be 1 if not log, 0 if log.
+        return ans
+
+    def _get_local_trimmed_means(self, halfwidth=10, play_it_safe=True, unsafe=0, safe=1, meanFirst=True, extreme=0.25):
+        ''' halfwidth is the number of bins to each side.
+            First position, A, is halfwidth
+            Last position, Z, is L-halfwidth
+            Positions 0 to A get local trimmed mean from 0-A+halfwidth+1.
+            Positions Z+1 to L get local trimmed mean from Z-halfwidth to L.
+            All others get position, P-haldwidth to P+halfwidth+1.
+            Note: when play_it_safe=True, if the trimmed mean is the unsafe value, it is changed to a safe value.
+                  when meanfirst=True, it will check if the mean gives a safe value, and use that.
+                  Use case: local trimmed mean normalization, but 0s will give ZeroDivError.
+                    Pseudocounts are sometimes used to prevent this, as well as eliminating 0 bins.
+                    This is just a catch/check.
+                  For trimming, the extreme proportion is substracted from both ends of sorted values before taking mean. (e.g. mean of bins 5:14 inclusive for 25% of 20 bins)'''
+        self.localtrimmedmeans = {}
+        for chrom in self.chromosomes:
+            counts = np.array(self.count[chrom])
+            L = len(self.count[chrom])
+            A = halfwidth
+            Z = L-halfwidth
+            self.localtrimmedmeans[chrom] = np.zeros(L)
+            if halfwidth > L:
+                # Entire contig is just locally trimmed mean'd
+                self.localtrimmedmeans[chrom][0:L] = self._safe_trimmed_mean_( x = counts,
+                                                                 unsafe=unsafe, safe=safe,
+                                                                 meanFirst=meanFirst, extreme=extreme, 
+                                                                 play_it_safe=play_it_safe)
+            else:
+                # Init positions
+                self.localtrimmedmeans[chrom][0:A] = self._safe_trimmed_mean_( x = counts[0:(A+halfwidth+1)],
+                                                                 unsafe=unsafe, safe=safe,
+                                                                 meanFirst=meanFirst, extreme=extreme, 
+                                                                 play_it_safe=play_it_safe )
+                # End positions
+                self.localtrimmedmeans[chrom][(Z+1):L] = self._safe_trimmed_mean_( x = counts[(Z-halfwidth):L],
+                                                                 unsafe=unsafe, safe=safe,
+                                                                 meanFirst=meanFirst, extreme=extreme, 
+                                                                 play_it_safe=play_it_safe )        
+                if Z >= A:
+                    ''' If Z < A, then entire contig has already been median norm'd with end positions overwriting overlapping start positions.
+                    If Z > A, then there is at least one position in the middle.'''
+                    # Middle positions:
+                    for i in range(A,Z+1):
+                        self.localtrimmedmeans[chrom][i] =  self._safe_trimmed_mean_( x = counts[(i-halfwidth):(i+halfwidth+1)],
+                                                                         unsafe=unsafe, safe=safe,
+                                                                         meanFirst=meanFirst, extreme=extreme, 
+                                                                         play_it_safe=play_it_safe )
+
+
+
+    def _get_local_means(self, halfwidth=10):
+        ''' halfwidth is the number of bins to each side.
+            First position, A, is halfwidth
+            Last position, Z, is L-halfwidth
+            Positions 0 to A get local trimmed mean from 0-A+halfwidth+1.
+            Positions Z+1 to L get local trimmed mean from Z-halfwidth to L.
+            All others get position, P-haldwidth to P+halfwidth+1.
+            '''
+        self.localmeans = {}
+        for chrom in self.chromosomes:
+            counts = np.array(self.count[chrom])
+            L = len(self.count[chrom])
+            A = halfwidth
+            Z = L-halfwidth
+            self.localmeans[chrom] = np.zeros(L)
+            if halfwidth > L:
+                # Entire contig is just mean'd
+                self.localmeans[chrom][0:L] = np.mean(counts)
+            else:
+                # Init positions
+                self.localmeans[chrom][0:A] = np.mean(counts[0:(A+halfwidth+1)])
+
+                # End positions
+                self.localmeans[chrom][(Z+1):L] = np.mean(counts[(Z-halfwidth):L])
+                                                                                
+                if Z >= A:
+                    ''' If Z < A, then entire contig has already been median norm'd with end positions overwriting overlapping start positions.
+                    If Z > A, then there is at least one position in the middle.'''
+                    # Middle positions:
+                    for i in range(A,Z+1):
+                        self.localmeans[chrom][i] =  np.mean( counts[(i-halfwidth):(i+halfwidth+1)])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    def _safe_median_(self, x, unsafe=0, safe=1, trimmedMeanFirst=True, meanFirst=True, extreme=0.25, play_it_safe=True):
+        ''' if median is unsafe, make it safe.
+            Optionally try chekcing and using safety of mean first'''
+        ## Get median of x.
         ans = np.median(x)
+
+        ## Some use cases may want to play with "unsafe" values, so this is an option (e.g. for median smoothing, there are no "unsafe" values).
+        if not play_it_safe: ## i.e. if play_it_unsafe:
+            ## RETURN!!! (Exit function here)
+            return ans
+        
+        ## ELSE:
+        ## Other use cases need to ensure that the "median" is safe (e.g. for local median ratio normalization, we try to avoid dividing by 0).
         if ans == unsafe and trimmedMeanFirst:
             sys.stderr.write('Unsafe 1\n')
-            sort = sorted(ans)
+            #sort = sorted(ans) ## This was here for some reason but ans is np.float64, not list... did I mean to sort x?
+            sort = sorted(x)    ## 
             l = len(sort)
             if l > 3: ## other wise, depending on extreme it will exclude none, or sides (equiv to median), or all
                 e = int(round(extreme*l))
@@ -174,17 +339,17 @@ class CovBed(object):
         ## Checks median or mean depending on safety of median and meanfirst option.
         if ans == unsafe:
             sys.stderr.write('Unsafe 3\n')
-            ans = safe
+            ans = safe  ## This should be 1 if not log, 0 if log.
         return ans
 
-    def _get_local_medians(self, halfwidth=10, besafe=True, unsafe=0, safe=1, trimmedMeanFirst=True, meanFirst=True, extreme=0.25):
+    def _get_local_medians(self, halfwidth=10, play_it_safe=True, unsafe=0, safe=1, trimmedMeanFirst=True, meanFirst=True, extreme=0.25):
         ''' halfwidth is the number of bins to each side.
             First position, A, is halfwidth
             Last position, Z, is L-halfwidth
             Positions 0 to A get local median from 0-A+halfwidth+1.
             Positions Z+1 to L get local median from Z-halfwidth to L.
             All others get position, P-haldwidth to P+halfwidth+1.
-            Note: when besafe=True, if the median is the unsafe value, it is changed to a safe value.
+            Note: when play_it_safe=True, if the median is the unsafe value, it is changed to a safe value.
                   when meanfirst=True and/or trimmedMeanFirst=True, it will check if the mean and/or trimmedMean gives a safe value, and use that.
                   trimmed mean takes precedent over mean; mean takes precedent over default safe value.
                   Use case: you likely plan to do local median normalization, but 0s will give ZeroDivError.
@@ -203,18 +368,21 @@ class CovBed(object):
                 self.localmeds[chrom][0:L] = self._safe_median_( x = counts,
                                                                  unsafe=unsafe, safe=safe,
                                                                  trimmedMeanFirst=trimmedMeanFirst,
-                                                                 meanFirst=meanFirst, extreme=extreme )
+                                                                 meanFirst=meanFirst, extreme=extreme, 
+                                                                 play_it_safe=play_it_safe)
             else:
                 # Init positions
                 self.localmeds[chrom][0:A] = self._safe_median_( x = counts[0:(A+halfwidth+1)],
                                                                  unsafe=unsafe, safe=safe,
                                                                  trimmedMeanFirst=trimmedMeanFirst,
-                                                                 meanFirst=meanFirst, extreme=extreme )
+                                                                 meanFirst=meanFirst, extreme=extreme, 
+                                                                 play_it_safe=play_it_safe )
                 # End positions
                 self.localmeds[chrom][(Z+1):L] = self._safe_median_( counts[(Z-halfwidth):L],
                                                                  unsafe=unsafe, safe=safe,
                                                                  trimmedMeanFirst=trimmedMeanFirst,
-                                                                 meanFirst=meanFirst, extreme=extreme )
+                                                                 meanFirst=meanFirst, extreme=extreme, 
+                                                                 play_it_safe=play_it_safe )
                 if Z >= A:
                     ''' If Z < A, then entire contig has already been median norm'd with end positions overwriting overlapping start positions.
                     If Z > A, then there is at least one position in the middle.'''
@@ -223,7 +391,8 @@ class CovBed(object):
                         self.localmeds[chrom][i] =  self._safe_median_( x = counts[(i-halfwidth):(i+halfwidth+1)],
                                                                          unsafe=unsafe, safe=safe,
                                                                          trimmedMeanFirst=trimmedMeanFirst,
-                                                                         meanFirst=meanFirst, extreme=extreme )
+                                                                         meanFirst=meanFirst, extreme=extreme, 
+                                                                         play_it_safe=play_it_safe )
 
     def _get_mad(self, relearn=False):
         if self.median is None or relearn:
@@ -308,6 +477,69 @@ class CovBed(object):
             self._get_local_medians(halfwidth=halfwidth)
         for chrom in self.chromosomes:
             self.count[chrom] = np.array(self.count[chrom]) / self.localmeds[chrom]
+
+    def chromosome_median_normalize_data(self):
+        ## DEVELOPING ON JULY 17, 2025; STILL NEEDS TESTING.
+        '''Normalize the counts for a given chromosome by the median of that chromosome.'''
+        for chrom in self.chromosomes:
+            ## Get median count for this chromosome
+            median_count = np.median(self.count[chrom])
+            if median_count > 0:
+                ## Normalize the counts for this chromosome by the median count
+                self.count[chrom] = self.count[chrom] / median_count
+            else:
+                ## If median count is 0, Try the mean.
+                mean_count = np.mean(self.count[chrom])
+                if mean_count > 0:
+                    self.count[chrom] = self.count[chrom] / mean_count
+                else:
+                    ## CAREFUL HERE: It is silently setting all counts to 1 to avoid division by zero in downstream analyses; but this may not be the desired behavior (e.g. if input is raw, raw ratio, or log2 ratio would have diff interpretations).
+                    ## If both median and mean are 0, set all counts to 1; then they will be normalized to 1.
+                    self.count[chrom] = np.ones_like(self.count[chrom])
+
+
+    def local_median_smooth_data(self, halfwidth=10, relearn=False):
+        ''' halfwidth is the number of bins to each side.
+            First position, A, is halfwidth
+            Last position, Z, is L-halfwidth
+            Positions 0 to A get local median from 0-A+halfwidth+1.
+            Positions Z+1 to L get local median from Z-halfwidth to L.
+            All others get position, P-haldwidth to P+halfwidth+1.'''
+        
+        if relearn or self.localmeds is None:
+            ## Get local medians around each bin in regions defined by halfwidth.
+            ## Play_it_safe is False, so it will not attempt to change the median to a non-zero value (a useful behavior for local median ratio normalization, but not for local median smoothing).
+            self._get_local_medians(halfwidth=halfwidth, play_it_safe=False) 
+        for chrom in self.chromosomes:
+            self.count[chrom] = self.localmeds[chrom]
+
+    def local_mean_smooth_data(self, halfwidth=10, relearn=False):
+        ''' halfwidth is the number of bins to each side.
+            First position, A, is halfwidth
+            Last position, Z, is L-halfwidth
+            Positions 0 to A get local mean from 0-A+halfwidth+1.
+            Positions Z+1 to L get local mean from Z-halfwidth to L.
+            All others get position, P-haldwidth to P+halfwidth+1.'''
+        if relearn or self.localmeans is None:
+            ## Get local means around each bin in regions defined by halfwidth.
+            self._get_local_means(halfwidth=halfwidth) 
+        for chrom in self.chromosomes:
+            self.count[chrom] = self.localmeans[chrom]
+
+    def local_trimmed_mean_smooth_data(self, halfwidth=10, relearn=False):
+        ''' halfwidth is the number of bins to each side.
+            First position, A, is halfwidth
+            Last position, Z, is L-halfwidth
+            Positions 0 to A get local mean from 0-A+halfwidth+1.
+            Positions Z+1 to L get local mean from Z-halfwidth to L.
+            All others get position, P-haldwidth to P+halfwidth+1.'''
+        if relearn or self.localtrimmedmeans is None:
+            ## Get local trimmed means around each bin in regions defined by halfwidth.
+            ## Play_it_safe is False, so it will not attempt to change the mean to a non-zero value (a useful behavior for local mean ratio normalization, but not for local mean smoothing).
+            self._get_local_trimmed_means(halfwidth=halfwidth, play_it_safe=False) 
+        for chrom in self.chromosomes:
+            self.count[chrom] = self.localtrimmedmeans[chrom]
+
 
     def robust_z_normalize_data(self, relearn=False):
         if relearn:
@@ -806,6 +1038,26 @@ class MultiCovBed(object):
     def median_normalize_data(self, refresh=False):
         for findex in range(self.nfiles):
             self.median_normalize_findex(findex, refresh)
+
+    # def chromosome_median_normalize_data(self):
+    #     ## DEVELOPING ON JULY 17, 2025; STILL NEEDS TESTING.
+    #     '''Normalize the counts for a given chromosome by the median of that chromosome.'''
+    #     for findex in range(self.nfiles):
+    #         for chrom in self.chromosomes:
+    #             ## Get median count for this chromosome
+    #             median_count = np.median(self.count[findex][chrom])
+    #             if median_count > 0:
+    #                 ## Normalize the counts for this chromosome by the median count
+    #                 self.count[findex][chrom] = self.normalize(self.count[findex][chrom], median_count)
+    #             else:
+    #                 ## If median count is 0, Try the mean.
+    #                 mean_count = np.mean(self.count[findex][chrom])
+    #                 if mean_count > 0:
+    #                     self.count[findex][chrom] = self.normalize(self.count[findex][chrom], mean_count)
+    #                 else:
+    #                     ## CAREFUL HERE: It is silently setting all counts to 1 to avoid division by zero in downstream analyses; but this may not be the desired behavior (e.g. if input is raw, raw ratio, or log2 ratio would have diff interpretations).
+    #                     ## If both median and mean are 0, set all counts to 1; then they will be normalized to 1.
+    #                     self.count[findex][chrom] = np.ones_like(self.count[findex][chrom])
 
     def ksmooth_counts(self, bw=10000):
         for chrom in self.chromosomes:

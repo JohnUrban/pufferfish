@@ -101,6 +101,18 @@ class NormalizeProtocol(object):
         elif self.args.protocol30:
             self.protocol = 30
             self._run_protocol = self._protocol30
+        elif self.args.protocol31:
+            self.protocol = 31
+            self._run_protocol = self._protocol31
+        elif self.args.protocol32:
+            self.protocol = 32
+            self._run_protocol = self._protocol32
+        elif self.args.protocol33:
+            self.protocol = 33
+            self._run_protocol = self._protocol33
+        elif self.args.protocol34:
+            self.protocol = 34
+            self._run_protocol = self._protocol34
 
             
     def _protocol1(self):
@@ -190,13 +202,16 @@ class NormalizeProtocol(object):
     def _protocol12(self):
         # median ratio norm - e.g. similar to DEseq (or TMM in EdgeR) -- global version
         # if no "early" sample present, then this just returns median norm late -- like protocol 1
+        # step 1: get ratios.
+        # step 2: divide all ratios by median ratio.
+        # This is analogous to subtracting the median log2 ratio from each log2 ratio.
         if self.early:
             self.late.normalize_to_other(self.early,
                                          self.args.pseudo)
         self.late.median_normalize_data()
 
     def _protocol13(self):
-        # median ratio norm w/ pre-smoothing - e.g. similar to DEseq (or TMM in EdgeR) -- global version
+        # median ratio norm w/ pre-ratio smoothing - e.g. similar to DEseq (or TMM in EdgeR) -- global version
         self.late.ksmooth_counts(bw=self.args.bandwidth,
                                       rescueNaN=self.args.replaceNaN,
                                       localWindow=self.args.localwinsize)
@@ -209,7 +224,7 @@ class NormalizeProtocol(object):
         self.late.median_normalize_data()
 
     def _protocol14(self):
-        # median ratio norm w/ post-smoothing - e.g. similar to DEseq (or TMM in EdgeR) -- global version
+        # median ratio norm w/ post-ratio smoothing - e.g. similar to DEseq (or TMM in EdgeR) -- global version
         if self.early:
             self.late.normalize_to_other(self.early,
                                          self.args.pseudo)
@@ -220,7 +235,7 @@ class NormalizeProtocol(object):
         
 
     def _protocol15(self):
-        # median ratio norm w/ end-smoothing - e.g. similar to DEseq (or TMM in EdgeR) -- global version
+        # median ratio norm w/ end-smoothing (after both ratio and median norm) - e.g. similar to DEseq (or TMM in EdgeR) -- global version
         if self.early:
             self.late.normalize_to_other(self.early,
                                          self.args.pseudo)
@@ -398,8 +413,39 @@ class NormalizeProtocol(object):
             self.late.normalize_to_other(self.early,
                                          self.args.pseudo)
         self.late.local_median_normalize_data(halfwidth=self.args.halfwidth)
-        
-        
+
+    def _protocol31(self):
+        # chromosome-specific median ratio norm
+        # if no "early" sample present, then this just returns chromosome-specific median norm late.
+        # step 1: get ratios, if both late and early present.
+        # step 2: divide all ratios on a given chromosome by the median ratio of that chromosome.
+        # This is analogous to subtracting the chromosome-specific median log2 ratio from each log2 ratio on that chromosome.
+        if self.early:
+            self.late.normalize_to_other(self.early,
+                                         self.args.pseudo)
+        self.late.chromosome_median_normalize_data()
+
+    def _protocol32(self):
+        # Median smoothing in windows defined by halfwidth.
+        if self.early:
+            self.late.normalize_to_other(self.early,
+                                         self.args.pseudo)
+        self.late.local_median_smooth_data(halfwidth=self.args.halfwidth)
+
+    def _protocol33(self):
+        # Trimmed Mean smoothing in windows defined by halfwidth.
+        if self.early:
+            self.late.normalize_to_other(self.early,
+                                         self.args.pseudo)
+        self.late.local_trimmed_mean_smooth_data(halfwidth=self.args.halfwidth)
+
+    def _protocol34(self):
+        # Mean smoothing in windows defined by halfwidth.
+        if self.early:
+            self.late.normalize_to_other(self.early,
+                                         self.args.pseudo)
+        self.late.local_mean_smooth_data(halfwidth=self.args.halfwidth)
+
     def _normalize(self):
         if not self.args.quiet:
             newmsg("loading late stage file")

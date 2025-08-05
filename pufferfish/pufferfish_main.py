@@ -971,6 +971,30 @@ When an early (control) sample is provided, you may also want to check the defau
                                                 The local approach is aimed at eliminating effects on the ratios due to local biases such as copy number in order to leave only peaks due to ChIP, for example.''')
 
 
+    parser_normalize_protocol.add_argument('-31', '--protocol31', action='store_true', default=False,
+                                        help='''Chromosome-specific Median ratio normalization. Late is normalized to early. Then ratios on a given chromosome (sequence) are normalized to the median of that chromosome (sequence).
+                                                This is similar to a what's used in DEseq2 (or TMM for EdgeR) -- on a chromosome by chromosome basis.
+                                                A motivation to do this is that the global median is not always a safe bet for estimating the background of each chromosome or sequence in a file, especially if it is meta-genomic sample where each sequence may have a different copy number.
+                                                An example from Sciara is that the mapping rate of the X chromosome is different from the autosomes for at least two scenarios: males that have one copy of the X, but two of each autosome; and X'X females that have one X and one variant of the X called X' (Xprime).
+                                                In the latter scenario, either one is mapping X and X' data to the X if the X' sequence is not present and the X copy number may seem lower than autosomes when it is not; OR one is mapping to both X and X' sequences, putting each around haploid coverage compared to autosomes.
+                                                In all these cases, the global median is not a good estimate of the background for the X chromosome.''')
+
+    parser_normalize_protocol.add_argument('-32', '--protocol32', action='store_true', default=False,
+                                        help='''Median smoothing. This is similar to protocol 30, but instead of median ratio normalization, it just smooths the values in the late stage sample (or late/early ratio early if present) with a local median defined by --halfwidth (default 10 bins to each side of a bin).
+                                                Motivations to do this are any motivations for smoothing in general. This is useful for smoothing out local biases in the data.
+                                                In particular, there are some spurious outlier bins that are not representative of the local region, and should be smoothed out.
+                                                An option might be to set a cap on the maximum value in a bin, but that is not implemented yet.
+                                                This is not a median ratio normalization.
+                                                A desired pipeline might be: median ratio normalization with protocol 30 or 31, followed by local median smoothing with this protocol 32.''')
+
+
+    parser_normalize_protocol.add_argument('-33', '--protocol33', action='store_true', default=False,
+                                        help='''Trimmed Mean smoothing. Similar to protocol 32, but uses a trimmed mean instead of a median for smoothing.''')
+
+    parser_normalize_protocol.add_argument('-34', '--protocol34', action='store_true', default=False,
+                                        help='''Mean smoothing. Similar to protocol 32, but uses a mean instead of a median for smoothing.''')
+
+
     parser_normalize.add_argument('--stringcols', action='store_true', default=False,
                                help='''Just treat columns other than 4 as strings...''')
 
@@ -990,6 +1014,14 @@ When an early (control) sample is provided, you may also want to check the defau
                                         Default = 10.
                                         Note that the default has different spans depending on the input bin size.
                                         If using 500 bp bins, then 10 bins to each side equals 5 kb to each side (10.5 kb window), but just 1 kb (2.1 kb window) if using 100 bp bins.''') 
+
+
+    # parser_normalize.add_argument('--safe', type=int, default=1,
+    #                            help='''This only applies to protocols 30 and 32. When looking for local medians, if the median is 0, it tries to use trimmed mean; if that is 0, it tries to use mean; if that is 0, it returns the safe value.
+    #                            This has been set to 1 by default, but can be set to 0 or any other value. 
+    #                            For protocol 30, it makes sense to keep it as 1. This will result in those values being normalized to 1 (returned back as is, which was 0 in the first place).
+    #                            For protocol 32, this safety should be turned off, since it is just smoothing, and 0s should be returned as 0s. Etc.''') 
+
 
     parser_normalize.add_argument('--pseudoZeroBins', action='store_true', default=False,
                                help='''Not to be confused with --pseudo. This option applies only to protocols 24-27 right now. It only need be used when there are zeros in the control (early) sample. In protocols 26 and 27, this is likely to happen from the robust z-score pre-processing. If an error is thrown, try --pseudoZeroBins or --addMinOtherPlusOneToBoth. --pseudoZeroBins adds min(abs(nonzero control values)) to bins in both samples that were 0 in contorl (early). --addMinOtherPlusOneToBoth shifts both distributions up by min(control values)+1, setting the min control value to 1. Both use minimum values for each chrom/contig independently rather than a global min. This is intended to reduce the effects of the modifications, but may introduce its own issues. These are not meant to be used together, but won't throw an error if they are.''')    
