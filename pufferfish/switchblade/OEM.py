@@ -1,3 +1,6 @@
+######## DEPRECATED
+######## LIVE VERSION @ https://github.com/JohnUrban/switchblade
+
 #!/usr/bin/env python2.7
 import sys
 import numpy as np
